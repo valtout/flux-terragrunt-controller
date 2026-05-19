@@ -48,6 +48,69 @@ spec:
                   type: integer
                   default: 1
                   description: "Number of concurrent executions allowed"
+                env:
+                  type: array
+                  description: "Environment variables to inject into the runner pod"
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: "Name of the environment variable"
+                      value:
+                        type: string
+                        description: "Static value for the variable"
+                      valueFrom:
+                        type: object
+                        description: "Source of the variable value"
+                        properties:
+                          secretKeyRef:
+                            type: object
+                            description: "Reference to a secret"
+                            properties:
+                              name:
+                                type: string
+                              key:
+                                type: string
+                            required:
+                              - name
+                              - key
+                          configMapKeyRef:
+                            type: object
+                            description: "Reference to a configmap"
+                            properties:
+                              name:
+                                type: string
+                              key:
+                                type: string
+                            required:
+                              - name
+                              - key
+                tf-vars:
+                  type: array
+                  description: "Terraform variables injected as TF_VAR_* environment variables"
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: "Variable name (will be prefixed with TF_VAR_)"
+                      value:
+                        type: string
+                        description: "Static value for the variable"
+                      secretRef:
+                        type: object
+                        description: "Reference to a Kubernetes secret (value protected from logs)"
+                        properties:
+                          name:
+                            type: string
+                            description: "Name of the secret"
+                          key:
+                            type: string
+                            description: "Key in the secret"
+                        required:
+                          - name
+                          - key
             status:
               type: object
               properties:
@@ -57,3 +120,6 @@ spec:
                 lastCommitSHA:
                   type: string
                   description: "SHA of the last detected change"
+                lastRunnerJob:
+                  type: string
+                  description: "Name of the last runner job spawned"

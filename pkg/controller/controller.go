@@ -3,12 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -17,27 +19,34 @@ import (
 	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
 	"flux-terragrunt-controller/pkg/internal/git"
+	"flux-terragrunt-controller/pkg/internal/runner"
 )
 
 // UnitsReconciler reconciles a Units object.
 type UnitsReconciler struct {
 	client.Client
-	Log              logr.Logger
-	Scheme           *runtime.Scheme
-	Recorder         record.EventRecorder
-	GitClientFactory func(repoURL, branch string, filters []string) gitChecker
-	TempDir          string
+	Log               logr.Logger
+	Scheme            *runtime.Scheme
+	Recorder          record.EventRecorder
+	KubernetesClient  kubernetes.Interface
+	GitClientFactory  func(repoURL, branch string, filters []string) gitChecker
+	TempDir           string
+	RunnerImage       string
+	RunnerServiceAccount string
 }
 
 type gitChecker interface {
 	HasChanges(workDir, lastKnownCommit string) (string, bool, error)
 	GetChangedFiles(workDir, fromCommit, toCommit string) ([]string, error)
+	GetChangedFilesForFilter(workDir, fromCommit, toCommit, filter string) ([]string, error)
 	CloneAtCommit(workDir, commitSHA string) (string, error)
 }
 
 //+kubebuilder:rbac:groups=terragrunt.run,resources=units,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=terragrunt.run,resources=units/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch
+//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+//+kubebuilder:rbac:groups="",resources=pods;services,verbs=get;list;watch
 
 // Reconcile handles create/update/delete events for Units.
 func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -102,8 +111,22 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if hasChanges {
 		r.Recorder.Eventf(units, "Normal", "ChangesDetected", "Detected %d changed file(s) across %d filter(s)", len(allChangedFiles), len(units.Spec.Filters))
 		log.Info("changes detected", "files", allChangedFiles, "filters", units.Spec.Filters, "lastCommit", lastKnownCommit, "currentCommit", currentCommit)
+
+		// Spawn the terragrunt runner
+		if err := r.spawnRunner(ctx, units, currentCommit); err != nil {
+			r.Recorder.Eventf(units, "Warning", "RunnerSpawnFailed", "Failed to spawn runner: %s", err.Error())
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to spawn runner: %w", err)
+		}
+
+		r.Recorder.Eventf(units, "Normal", "RunnerSpawned", "Spawned terragrunt runner for commit %s", currentCommit)
 	} else {
 		log.Info("no changes detected", "filters", units.Spec.Filters)
+	}
+
+	// Cleanup old runner jobs (keep last 10)
+	if err := r.cleanupOldRunners(ctx, units.Name); err != nil {
+		// Log but don't fail
+		log.Error(err, "failed to cleanup old runners")
 	}
 
 	// Update status
@@ -118,6 +141,43 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+}
+
+func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1alpha1.Units, commitSHA string) error {
+	tgRunner := runner.NewRunner(
+		r.KubernetesClient,
+		r.Scheme,
+		r.RunnerImage,
+		units.Namespace,
+		r.RunnerServiceAccount,
+	)
+
+	// Build the terragrunt command: terragrunt run --filter <path1> --filter <path2> --all plan
+	subCommand := "plan"
+	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA)
+	if err != nil {
+		return fmt.Errorf("failed to spawn runner job: %w", err)
+	}
+
+	r.Log.Info("spawned runner job", "job", job.Name, "commit", commitSHA)
+
+	// Update status with last runner job
+	units.Status.LastRunnerJob = job.Name
+
+	return nil
+}
+
+func (r *UnitsReconciler) cleanupOldRunners(ctx context.Context, unitsName string) error {
+	tgRunner := runner.NewRunner(
+		r.KubernetesClient,
+		r.Scheme,
+		r.RunnerImage,
+		"",
+		r.RunnerServiceAccount,
+	)
+
+	// Keep last 10 jobs
+	return tgRunner.CleanupOldJobs(ctx, unitsName, 10)
 }
 
 func (r *UnitsReconciler) newGitClient(repoURL, branch string, filters []string) gitChecker {
@@ -139,16 +199,25 @@ func GetObjectIdentifier(obj client.Object) string {
 	return types.ObjectKeyFromObject(obj).String()
 }
 
-// Setup adds a new controller to the manager.
+// Register adds the controller to the manager.
 func Register(mgr ctrl.Manager) error {
 	recorder := mgr.GetEventRecorderFor("units-controller")
 	reconciler := &UnitsReconciler{
-		Client:             mgr.GetClient(),
-		Log:                mgr.GetLogger().WithName("Units"),
-		Scheme:             mgr.GetScheme(),
-		Recorder:           recorder,
-		GitClientFactory:   nil,
-		TempDir:            "/tmp",
+		Client:               mgr.GetClient(),
+		Log:                  mgr.GetLogger().WithName("Units"),
+		Scheme:               mgr.GetScheme(),
+		Recorder:             recorder,
+		KubernetesClient:     kubernetes.NewForConfigOrDie(mgr.GetConfig()),
+		TempDir:              "/tmp",
+		RunnerImage:          os.Getenv("RUNNER_IMAGE"),
+		RunnerServiceAccount: os.Getenv("RUNNER_SERVICE_ACCOUNT"),
+	}
+
+	if reconciler.RunnerImage == "" {
+		reconciler.RunnerImage = "ghcr.io/" + os.Getenv("GITHUB_REPOSITORY") + "/runner:latest"
+	}
+	if reconciler.RunnerServiceAccount == "" {
+		reconciler.RunnerServiceAccount = "flux-terragrunt-controller"
 	}
 
 	return reconciler.SetupWithManager(mgr)
