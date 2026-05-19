@@ -1,24 +1,36 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: { { include "flux-terragrunt-controller.fullname" . } }
-  labels: { { - include "flux-terragrunt-controller.labels" . | nindent 4 } }
+  name: {{ include "flux-terragrunt-controller.fullname" . }}
+  labels:
+    {{- include "flux-terragrunt-controller.labels" . | nindent 4 }}
 rules:
-  # Scaffold: replace with precise RBAC rules once the reconciler targets are defined.
-  - apiGroups: ["*"]
-    resources: ["*"]
-    verbs: ["*"]
+  # TerragruntStack CRUD
+  - apiGroups: ["terragrunt.run"]
+    resources: ["terragruntstacks"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["terragrunt.run"]
+    resources: ["terragruntstacks/status"]
+    verbs: ["get", "update", "patch"]
+  # Flux GitRepository read access
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories/status"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: { { include "flux-terragrunt-controller.fullname" . } }
-  labels: { { - include "flux-terragrunt-controller.labels" . | nindent 4 } }
+  name: {{ include "flux-terragrunt-controller.fullname" . }}
+  labels:
+    {{- include "flux-terragrunt-controller.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: { { include "flux-terragrunt-controller.fullname" . } }
+  name: {{ include "flux-terragrunt-controller.fullname" . }}
 subjects:
   - kind: ServiceAccount
-    name: { { include "flux-terragrunt-controller.serviceAccountName" . } }
-    namespace: { { .Release.Namespace } }
+    name: {{ include "flux-terragrunt-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
