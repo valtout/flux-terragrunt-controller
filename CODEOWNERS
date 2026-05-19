@@ -1,0 +1,15 @@
+# Default owner for everything
+* @owners
+
+# Core controller and API code
+/pkg/controller @maintainers
+/pkg/apis @maintainers
+/pkg/internal/git @maintainers
+/cmd @maintainers
+
+# Helm charts and deployment
+/charts @maintainers
+
+# CI/CD and build
+/.github/workflows @maintainers
+Makefile @maintainers
