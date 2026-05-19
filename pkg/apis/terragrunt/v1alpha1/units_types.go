@@ -4,19 +4,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TerragruntStackSpec defines the spec for a TerragruntStack.
-type TerragruntStackSpec struct {
-	// Filter is the path within the GitRepository to monitor for changes.
+// UnitsSpec defines the spec for a Units resource.
+type UnitsSpec struct {
+	// Filters are the paths within the GitRepository to monitor for changes.
 	// +required
-	Filter string `json:"filter"`
+	Filters []string `json:"filters"`
 
 	// Branch is the Git branch to monitor.
 	// +required
 	Branch string `json:"branch"`
+
+	// Parallelism is the number of concurrent executions allowed.
+	// +optional
+	// +default=1
+	Parallelism int `json:"parallelism,omitempty"`
 }
 
-// TerragruntStackStatus defines the observed state of a TerragruntStack.
-type TerragruntStackStatus struct {
+// UnitsStatus defines the observed state of a Units resource.
+type UnitsStatus struct {
 	// LastHandledReconcileAt tracks the last reconciliation timestamp.
 	// +optional
 	LastHandledReconcileAt string `json:"lastHandledReconcileAt,omitempty"`
@@ -28,28 +33,28 @@ type TerragruntStackStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=terragruntstacks,shortName=tgstack
+// +kubebuilder:resource:path=units,shortName=unit
 // +genclient
 // +genclient:nonNamespaced
 
-// TerragruntStack is the Schema for the terragruntstacks API.
-type TerragruntStack struct {
+// Units is the Schema for the units API.
+type Units struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   TerragruntStackSpec   `json:"spec,omitempty"`
-	Status TerragruntStackStatus `json:"status,omitempty"`
+	Spec   UnitsSpec   `json:"spec,omitempty"`
+	Status UnitsStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// TerragruntStackList contains a list of TerragruntStack.
-type TerragruntStackList struct {
+// UnitsList contains a list of Units.
+type UnitsList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []TerragruntStack `json:"items"`
+	Items           []Units `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&TerragruntStack{}, &TerragruntStackList{})
+	SchemeBuilder.Register(&Units{}, &UnitsList{})
 }

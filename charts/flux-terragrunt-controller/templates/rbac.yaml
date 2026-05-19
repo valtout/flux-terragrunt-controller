@@ -5,12 +5,12 @@ metadata:
   labels:
     {{- include "flux-terragrunt-controller.labels" . | nindent 4 }}
 rules:
-  # TerragruntStack CRUD
+  # Units CRUD
   - apiGroups: ["terragrunt.run"]
-    resources: ["terragruntstacks"]
+    resources: ["units"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["terragrunt.run"]
-    resources: ["terragruntstacks/status"]
+    resources: ["units/status"]
     verbs: ["get", "update", "patch"]
   # Flux GitRepository read access
   - apiGroups: ["source.toolkit.fluxcd.io"]

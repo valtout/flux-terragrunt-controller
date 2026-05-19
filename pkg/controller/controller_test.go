@@ -20,9 +20,10 @@ import (
 const (
 	testGitRepoURL     = "https://github.com/example/repo.git"
 	testBranch         = "main"
-	testFilter         = "terraform/"
+	testFilters        = "terraform/"
 	testLastCommitSHA  = "abc123"
 	testCurrentCommit  = "def456"
+	testParallelism    = 2
 )
 
 func newTestScheme() *runtime.Scheme {
@@ -34,7 +35,7 @@ func newTestScheme() *runtime.Scheme {
 
 type mockGitChecker struct {
 	hasChangesResult       (string, bool, error)
-	getChangedFilesResult  ([]string, error)
+	getChangedFilesResult ([]string, error)
 	cloneAtCommitResult    (string, error)
 	callLog                []string
 }
@@ -46,6 +47,11 @@ func (m *mockGitChecker) HasChanges(workDir, lastKnownCommit string) (string, bo
 
 func (m *mockGitChecker) GetChangedFiles(workDir, fromCommit, toCommit string) ([]string, error) {
 	m.callLog = append(m.callLog, fmt.Sprintf("GetChangedFiles(%s,%s,%s)", workDir, fromCommit, toCommit))
+	return m.getChangedFilesResult, nil
+}
+
+func (m *mockGitChecker) GetChangedFilesForFilter(workDir, fromCommit, toCommit, filter string) ([]string, error) {
+	m.callLog = append(m.callLog, fmt.Sprintf("GetChangedFilesForFilter(%s,%s,%s,%s)", workDir, fromCommit, toCommit, filter))
 	return m.getChangedFilesResult, nil
 }
 
@@ -80,9 +86,9 @@ type mockTracker struct {
 }
 
 type mockClient struct {
-	getResult   error
-	listResult  error
-	listObjs    []client.Object
+	getResult    error
+	listResult   error
+	listObjs     []client.Object
 	statusWriter *mockStatusWriter
 	tracker      *mockTracker
 }
@@ -99,8 +105,8 @@ func newMockClient() *mockClient {
 func (m *mockClient) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
 	if o, ok := m.tracker.objects[key]; ok {
 		switch target := obj.(type) {
-		case *terragruntv1alpha1.TerragruntStack:
-			*target = *(o.(*terragruntv1alpha1.TerragruntStack))
+		case *terragruntv1alpha1.Units:
+			*target = *(o.(*terragruntv1alpha1.Units))
 		case *fluxv1.GitRepository:
 			*target = *(o.(*fluxv1.GitRepository))
 		}
@@ -114,11 +120,11 @@ func (m *mockClient) List(_ context.Context, list client.ObjectList, _ ...client
 		return m.listResult
 	}
 	switch target := list.(type) {
-	case *terragruntv1alpha1.TerragruntStackList:
-		var items []terragruntv1alpha1.TerragruntStack
+	case *terragruntv1alpha1.UnitsList:
+		var items []terragruntv1alpha1.Units
 		for _, obj := range m.tracker.objects {
-			if ts, ok := obj.(*terragruntv1alpha1.TerragruntStack); ok {
-				items = append(items, *ts)
+			if u, ok := obj.(*terragruntv1alpha1.Units); ok {
+				items = append(items, *u)
 			}
 		}
 		target.Items = items
@@ -175,16 +181,17 @@ func (m *mockClient) FieldValidator() client.FieldValidator {
 func TestReconcile_WithChanges(t *testing.T) {
 	mockCli := newMockClient()
 
-	stack := &terragruntv1alpha1.TerragruntStack{
+	units := &terragruntv1alpha1.Units{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
+			Name:      "test-unit",
 			Namespace: "default",
 		},
-		Spec: terragruntv1alpha1.TerragruntStackSpec{
-			Filter: testFilter,
-			Branch: testBranch,
+		Spec: terragruntv1alpha1.UnitsSpec{
+			Filters:      []string{testFilters},
+			Branch:       testBranch,
+			Parallelism:   testParallelism,
 		},
-		Status: terragruntv1alpha1.TerragruntStackStatus{
+		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: testLastCommitSHA,
 		},
 	}
@@ -207,7 +214,7 @@ func TestReconcile_WithChanges(t *testing.T) {
 		},
 	}
 
-	mockCli.tracker.objects[client.ObjectKey{Name: "test-stack", Namespace: "default"}] = stack
+	mockCli.tracker.objects[client.ObjectKey{Name: "test-unit", Namespace: "default"}] = units
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
@@ -218,17 +225,17 @@ func TestReconcile_WithChanges(t *testing.T) {
 	recorder := record.NewFakeRecorder(10)
 	logger := log.NullLogger{}
 
-	reconciler := &TerragruntStackReconciler{
+	reconciler := &UnitsReconciler{
 		Client:           mockCli,
 		Log:              logger,
 		Scheme:           newTestScheme(),
 		Recorder:         recorder,
-		GitClientFactory: func(repoURL, branch, filter string) gitChecker { return mockGit },
+		GitClientFactory: func(repoURL, branch string, filters []string) gitChecker { return mockGit },
 		TempDir:          "/tmp",
 	}
 
 	req := reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-stack", Namespace: "default"},
+		NamespacedName: client.ObjectKey{Name: "test-unit", Namespace: "default"},
 	}
 
 	result, err := reconciler.Reconcile(context.Background(), req)
@@ -253,16 +260,17 @@ func TestReconcile_WithChanges(t *testing.T) {
 func TestReconcile_NoChanges(t *testing.T) {
 	mockCli := newMockClient()
 
-	stack := &terragruntv1alpha1.TerragruntStack{
+	units := &terragruntv1alpha1.Units{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
+			Name:      "test-unit",
 			Namespace: "default",
 		},
-		Spec: terragruntv1alpha1.TerragruntStackSpec{
-			Filter: testFilter,
-			Branch: testBranch,
+		Spec: terragruntv1alpha1.UnitsSpec{
+			Filters:      []string{testFilters},
+			Branch:       testBranch,
+			Parallelism:   testParallelism,
 		},
-		Status: terragruntv1alpha1.TerragruntStackStatus{
+		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: testCurrentCommit,
 		},
 	}
@@ -285,28 +293,28 @@ func TestReconcile_NoChanges(t *testing.T) {
 		},
 	}
 
-	mockCli.tracker.objects[client.ObjectKey{Name: "test-stack", Namespace: "default"}] = stack
+	mockCli.tracker.objects[client.ObjectKey{Name: "test-unit", Namespace: "default"}] = units
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		hasChangesResult:      (testCurrentCommit, false, nil),
+		hasChangesResult:       (testCurrentCommit, false, nil),
 		getChangedFilesResult: (nil, nil),
 	}
 
 	recorder := record.NewFakeRecorder(10)
 	logger := log.NullLogger{}
 
-	reconciler := &TerragruntStackReconciler{
+	reconciler := &UnitsReconciler{
 		Client:           mockCli,
 		Log:              logger,
 		Scheme:           newTestScheme(),
 		Recorder:         recorder,
-		GitClientFactory: func(repoURL, branch, filter string) gitChecker { return mockGit },
+		GitClientFactory: func(repoURL, branch string, filters []string) gitChecker { return mockGit },
 		TempDir:          "/tmp",
 	}
 
 	req := reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-stack", Namespace: "default"},
+		NamespacedName: client.ObjectKey{Name: "test-unit", Namespace: "default"},
 	}
 
 	result, err := reconciler.Reconcile(context.Background(), req)
@@ -323,23 +331,23 @@ func TestReconcile_NoChanges(t *testing.T) {
 func TestReconcile_NoGitRepository(t *testing.T) {
 	mockCli := newMockClient()
 
-	stack := &terragruntv1alpha1.TerragruntStack{
+	units := &terragruntv1alpha1.Units{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
+			Name:      "test-unit",
 			Namespace: "default",
 		},
-		Spec: terragruntv1alpha1.TerragruntStackSpec{
-			Filter: testFilter,
-			Branch: testBranch,
+		Spec: terragruntv1alpha1.UnitsSpec{
+			Filters: []string{testFilters},
+			Branch:  testBranch,
 		},
 	}
 
-	mockCli.tracker.objects[client.ObjectKey{Name: "test-stack", Namespace: "default"}] = stack
+	mockCli.tracker.objects[client.ObjectKey{Name: "test-unit", Namespace: "default"}] = units
 
 	recorder := record.NewFakeRecorder(10)
 	logger := log.NullLogger{}
 
-	reconciler := &TerragruntStackReconciler{
+	reconciler := &UnitsReconciler{
 		Client:   mockCli,
 		Log:      logger,
 		Scheme:   newTestScheme(),
@@ -347,7 +355,7 @@ func TestReconcile_NoGitRepository(t *testing.T) {
 	}
 
 	req := reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-stack", Namespace: "default"},
+		NamespacedName: client.ObjectKey{Name: "test-unit", Namespace: "default"},
 	}
 
 	result, err := reconciler.Reconcile(context.Background(), req)
@@ -361,13 +369,13 @@ func TestReconcile_NoGitRepository(t *testing.T) {
 	}
 }
 
-func TestReconcile_StackNotFound(t *testing.T) {
+func TestReconcile_UnitNotFound(t *testing.T) {
 	mockCli := newMockClient()
 
 	recorder := record.NewFakeRecorder(10)
 	logger := log.NullLogger{}
 
-	reconciler := &TerragruntStackReconciler{
+	reconciler := &UnitsReconciler{
 		Client:   mockCli,
 		Log:      logger,
 		Scheme:   newTestScheme(),
@@ -385,23 +393,23 @@ func TestReconcile_StackNotFound(t *testing.T) {
 	}
 
 	if result.Requeue {
-		t.Error("Did not expect Requeue when stack is not found")
+		t.Error("Did not expect Requeue when unit is not found")
 	}
 }
 
 func TestReconcile_FirstReconciliation(t *testing.T) {
 	mockCli := newMockClient()
 
-	stack := &terragruntv1alpha1.TerragruntStack{
+	units := &terragruntv1alpha1.Units{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
+			Name:      "test-unit",
 			Namespace: "default",
 		},
-		Spec: terragruntv1alpha1.TerragruntStackSpec{
-			Filter: testFilter,
-			Branch: testBranch,
+		Spec: terragruntv1alpha1.UnitsSpec{
+			Filters: []string{testFilters},
+			Branch:  testBranch,
 		},
-		Status: terragruntv1alpha1.TerragruntStackStatus{
+		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: "",
 		},
 	}
@@ -424,7 +432,7 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 		},
 	}
 
-	mockCli.tracker.objects[client.ObjectKey{Name: "test-stack", Namespace: "default"}] = stack
+	mockCli.tracker.objects[client.ObjectKey{Name: "test-unit", Namespace: "default"}] = units
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
@@ -434,17 +442,17 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 	recorder := record.NewFakeRecorder(10)
 	logger := log.NullLogger{}
 
-	reconciler := &TerragruntStackReconciler{
+	reconciler := &UnitsReconciler{
 		Client:           mockCli,
 		Log:              logger,
 		Scheme:           newTestScheme(),
 		Recorder:         recorder,
-		GitClientFactory: func(repoURL, branch, filter string) gitChecker { return mockGit },
+		GitClientFactory: func(repoURL, branch string, filters []string) gitChecker { return mockGit },
 		TempDir:          "/tmp",
 	}
 
 	req := reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-stack", Namespace: "default"},
+		NamespacedName: client.ObjectKey{Name: "test-unit", Namespace: "default"},
 	}
 
 	result, err := reconciler.Reconcile(context.Background(), req)
@@ -461,16 +469,17 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 func TestReconcile_GitOperationError(t *testing.T) {
 	mockCli := newMockClient()
 
-	stack := &terragruntv1alpha1.TerragruntStack{
+	units := &terragruntv1alpha1.Units{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
+			Name:      "test-unit",
 			Namespace: "default",
 		},
-		Spec: terragruntv1alpha1.TerragruntStackSpec{
-			Filter: testFilter,
-			Branch: testBranch,
+		Spec: terragruntv1alpha1.UnitsSpec{
+			Filters:      []string{testFilters},
+			Branch:       testBranch,
+			Parallelism:   testParallelism,
 		},
-		Status: terragruntv1alpha1.TerragruntStackStatus{
+		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: testLastCommitSHA,
 		},
 	}
@@ -493,7 +502,7 @@ func TestReconcile_GitOperationError(t *testing.T) {
 		},
 	}
 
-	mockCli.tracker.objects[client.ObjectKey{Name: "test-stack", Namespace: "default"}] = stack
+	mockCli.tracker.objects[client.ObjectKey{Name: "test-unit", Namespace: "default"}] = units
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
@@ -503,17 +512,17 @@ func TestReconcile_GitOperationError(t *testing.T) {
 	recorder := record.NewFakeRecorder(10)
 	logger := log.NullLogger{}
 
-	reconciler := &TerragruntStackReconciler{
+	reconciler := &UnitsReconciler{
 		Client:           mockCli,
 		Log:              logger,
 		Scheme:           newTestScheme(),
 		Recorder:         recorder,
-		GitClientFactory: func(repoURL, branch, filter string) gitChecker { return mockGit },
+		GitClientFactory: func(repoURL, branch string, filters []string) gitChecker { return mockGit },
 		TempDir:          "/tmp",
 	}
 
 	req := reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-stack", Namespace: "default"},
+		NamespacedName: client.ObjectKey{Name: "test-unit", Namespace: "default"},
 	}
 
 	_, err := reconciler.Reconcile(context.Background(), req)
@@ -523,22 +532,29 @@ func TestReconcile_GitOperationError(t *testing.T) {
 	}
 }
 
-func TestTerragruntStackSpec(t *testing.T) {
-	spec := terragruntv1alpha1.TerragruntStackSpec{
-		Filter: "terraform/",
-		Branch: "main",
+func TestUnitsSpec(t *testing.T) {
+	spec := terragruntv1alpha1.UnitsSpec{
+		Filters:     []string{"terraform/", "modules/"},
+		Branch:      "main",
+		Parallelism: 5,
 	}
 
-	if spec.Filter != "terraform/" {
-		t.Errorf("Expected Filter to be 'terraform/', got %s", spec.Filter)
+	if len(spec.Filters) != 2 {
+		t.Errorf("Expected 2 filters, got %d", len(spec.Filters))
+	}
+	if spec.Filters[0] != "terraform/" {
+		t.Errorf("Expected Filters[0] to be 'terraform/', got %s", spec.Filters[0])
 	}
 	if spec.Branch != "main" {
 		t.Errorf("Expected Branch to be 'main', got %s", spec.Branch)
 	}
+	if spec.Parallelism != 5 {
+		t.Errorf("Expected Parallelism to be 5, got %d", spec.Parallelism)
+	}
 }
 
-func TestTerragruntStackStatus(t *testing.T) {
-	status := terragruntv1alpha1.TerragruntStackStatus{
+func TestUnitsStatus(t *testing.T) {
+	status := terragruntv1alpha1.UnitsStatus{
 		LastHandledReconcileAt: "1234567890",
 		LastCommitSHA:          "abc123",
 	}
@@ -569,15 +585,15 @@ func TestGitRepositorySpec(t *testing.T) {
 }
 
 func TestGetObjectIdentifier(t *testing.T) {
-	stack := &terragruntv1alpha1.TerragruntStack{
+	units := &terragruntv1alpha1.Units{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
+			Name:      "test-unit",
 			Namespace: "default",
 		},
 	}
 
-	id := GetObjectIdentifier(stack)
-	expected := "default/test-stack"
+	id := GetObjectIdentifier(units)
+	expected := "default/test-unit"
 
 	if id != expected {
 		t.Errorf("Expected identifier to be '%s', got '%s'", expected, id)

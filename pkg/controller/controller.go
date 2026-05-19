@@ -19,14 +19,14 @@ import (
 	"flux-terragrunt-controller/pkg/internal/git"
 )
 
-// TerragruntStackReconciler reconciles a TerragruntStack object.
-type TerragruntStackReconciler struct {
+// UnitsReconciler reconciles a Units object.
+type UnitsReconciler struct {
 	client.Client
-	Log                logr.Logger
-	Scheme             *runtime.Scheme
-	Recorder           record.EventRecorder
-	GitClientFactory   func(repoURL, branch, filter string) gitChecker
-	TempDir            string
+	Log              logr.Logger
+	Scheme           *runtime.Scheme
+	Recorder         record.EventRecorder
+	GitClientFactory func(repoURL, branch string, filters []string) gitChecker
+	TempDir          string
 }
 
 type gitChecker interface {
@@ -35,21 +35,21 @@ type gitChecker interface {
 	CloneAtCommit(workDir, commitSHA string) (string, error)
 }
 
-//+kubebuilder:rbac:groups=terragrunt.run,resources=terragruntstacks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=terragrunt.run,resources=terragruntstacks/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=terragrunt.run,resources=units,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=terragrunt.run,resources=units/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch
 
-// Reconcile handles create/update/delete events for TerragruntStack.
-func (r *TerragruntStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("terragruntstack", req.NamespacedName)
-	log.Info("reconciling TerragruntStack")
+// Reconcile handles create/update/delete events for Units.
+func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("units", req.NamespacedName)
+	log.Info("reconciling Units")
 
-	stack := &terragruntv1alpha1.TerragruntStack{}
-	if err := r.Get(ctx, req.NamespacedName, stack); err != nil {
+	units := &terragruntv1alpha1.Units{}
+	if err := r.Get(ctx, req.NamespacedName, units); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to get TerragruntStack: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get Units: %w", err)
 	}
 
 	// Find the GitRepository in the same namespace
@@ -67,17 +67,17 @@ func (r *TerragruntStackReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	if gitRepo == nil {
-		r.Recorder.Eventf(stack, "Normal", "NoGitRepository", "No ready GitRepository found in namespace %s", req.Namespace)
+		r.Recorder.Eventf(units, "Normal", "NoGitRepository", "No ready GitRepository found in namespace %s", req.Namespace)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	if gitRepo.Status.Artifact == nil {
-		r.Recorder.Eventf(stack, "Normal", "GitRepositoryNotReady", "GitRepository %s has no artifact yet", gitRepo.Name)
+		r.Recorder.Eventf(units, "Normal", "GitRepositoryNotReady", "GitRepository %s has no artifact yet", gitRepo.Name)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	// Check for changes in the filter path
-	gitClient := r.newGitClient(gitRepo.Spec.URL, stack.Spec.Branch, stack.Spec.Filter)
+	// Check for changes across all filter paths
+	gitClient := r.newGitClient(gitRepo.Spec.URL, units.Spec.Branch, units.Spec.Filters)
 
 	workDir := r.TempDir
 	if workDir == "" {
@@ -85,30 +85,34 @@ func (r *TerragruntStackReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	currentCommit := gitRepo.Status.Artifact.Revision
-	lastKnownCommit := stack.Status.LastCommitSHA
+	lastKnownCommit := units.Status.LastCommitSHA
 
-	changedFiles, err := gitClient.GetChangedFiles(workDir, lastKnownCommit, currentCommit)
-	if err != nil {
-		r.Recorder.Eventf(stack, "Warning", "GitError", "Failed to check for changes: %s", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to check git changes: %w", err)
+	var allChangedFiles []string
+	for _, filter := range units.Spec.Filters {
+		changedFiles, err := gitClient.GetChangedFilesForFilter(workDir, lastKnownCommit, currentCommit, filter)
+		if err != nil {
+			r.Recorder.Eventf(units, "Warning", "GitError", "Failed to check for changes in %s: %s", filter, err.Error())
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to check git changes: %w", err)
+		}
+		allChangedFiles = append(allChangedFiles, changedFiles...)
 	}
 
-	hasChanges := len(changedFiles) > 0
+	hasChanges := len(allChangedFiles) > 0
 
 	if hasChanges {
-		r.Recorder.Eventf(stack, "Normal", "ChangesDetected", "Detected %d changed file(s) in path %s", len(changedFiles), stack.Spec.Filter)
-		log.Info("changes detected", "files", changedFiles, "lastCommit", lastKnownCommit, "currentCommit", currentCommit)
+		r.Recorder.Eventf(units, "Normal", "ChangesDetected", "Detected %d changed file(s) across %d filter(s)", len(allChangedFiles), len(units.Spec.Filters))
+		log.Info("changes detected", "files", allChangedFiles, "filters", units.Spec.Filters, "lastCommit", lastKnownCommit, "currentCommit", currentCommit)
 	} else {
-		log.Info("no changes detected", "path", stack.Spec.Filter)
+		log.Info("no changes detected", "filters", units.Spec.Filters)
 	}
 
 	// Update status
-	oldStatus := stack.Status
-	stack.Status.LastCommitSHA = currentCommit
-	stack.Status.LastHandledReconcileAt = fmt.Sprintf("%d", time.Now().Unix())
+	oldStatus := units.Status
+	units.Status.LastCommitSHA = currentCommit
+	units.Status.LastHandledReconcileAt = fmt.Sprintf("%d", time.Now().Unix())
 
-	if stack.Status != oldStatus {
-		if err := r.Status().Update(ctx, stack); err != nil {
+	if units.Status != oldStatus {
+		if err := r.Status().Update(ctx, units); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 		}
 	}
@@ -116,17 +120,17 @@ func (r *TerragruntStackReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *TerragruntStackReconciler) newGitClient(repoURL, branch, filter string) gitChecker {
+func (r *UnitsReconciler) newGitClient(repoURL, branch string, filters []string) gitChecker {
 	if r.GitClientFactory != nil {
-		return r.GitClientFactory(repoURL, branch, filter)
+		return r.GitClientFactory(repoURL, branch, filters)
 	}
-	return git.NewClient(repoURL, branch, filter)
+	return git.NewMultiClient(repoURL, branch, filters)
 }
 
 // SetupWithManager sets up the controller with the manager.
-func (r *TerragruntStackReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *UnitsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&terragruntv1alpha1.TerragruntStack{}).
+		For(&terragruntv1alpha1.Units{}).
 		Complete(r)
 }
 
@@ -135,18 +139,12 @@ func GetObjectIdentifier(obj client.Object) string {
 	return types.ObjectKeyFromObject(obj).String()
 }
 
-// GenerateEvent creates a Kubernetes event for the object.
-// Controller implementation uses EventRecorder instead.
-func GenerateEvent(obj client.Object, eventType, reason, message string) {
-	// This is a placeholder - events are managed by the controller's EventRecorder
-}
-
 // Setup adds a new controller to the manager.
 func Register(mgr ctrl.Manager) error {
-	recorder := mgr.GetEventRecorderFor("terragruntstack-controller")
-	reconciler := &TerragruntStackReconciler{
+	recorder := mgr.GetEventRecorderFor("units-controller")
+	reconciler := &UnitsReconciler{
 		Client:             mgr.GetClient(),
-		Log:                mgr.GetLogger().WithName("TerragruntStack"),
+		Log:                mgr.GetLogger().WithName("Units"),
 		Scheme:             mgr.GetScheme(),
 		Recorder:           recorder,
 		GitClientFactory:   nil,
@@ -156,5 +154,5 @@ func Register(mgr ctrl.Manager) error {
 	return reconciler.SetupWithManager(mgr)
 }
 
-// Verify TerragruntStackReconciler implements reconcile.Reconciler
-var _ reconcile.Reconciler = &TerragruntStackReconciler{}
+// Verify UnitsReconciler implements reconcile.Reconciler
+var _ reconcile.Reconciler = &UnitsReconciler{}

@@ -15,7 +15,7 @@ type Client struct {
 	filter  string
 }
 
-// NewClient creates a new git client.
+// NewClient creates a new git client for a single filter.
 func NewClient(repoURL, branch, filter string) *Client {
 	return &Client{
 		repoURL: repoURL,
@@ -24,37 +24,26 @@ func NewClient(repoURL, branch, filter string) *Client {
 	}
 }
 
-// HasChanges checks if there are any changes in the specified path within the repository
-// by comparing the current commit with the last known commit.
-// Returns the current commit SHA and true if changes exist.
-func (c *Client) HasChanges(workDir, lastKnownCommit string) (string, bool, error) {
-	clonePath, err := c.cloneRepo(workDir)
-	if err != nil {
-		return "", false, err
-	}
-	defer os.RemoveAll(clonePath)
+// MultiClient provides git operations for checking repository changes across multiple filters.
+type MultiClient struct {
+	repoURL  string
+	branch   string
+	filters  []string
+	clients  []*Client
+}
 
-	currentCommit, err := c.getCurrentCommit(clonePath)
-	if err != nil {
-		return "", false, err
+// NewMultiClient creates a new git client that handles multiple filters.
+func NewMultiClient(repoURL, branch string, filters []string) *MultiClient {
+	clients := make([]*Client, len(filters))
+	for i, f := range filters {
+		clients[i] = NewClient(repoURL, branch, f)
 	}
-
-	if lastKnownCommit == "" {
-		// First reconcile, no previous commit to compare
-		return currentCommit, false, nil
+	return &MultiClient{
+		repoURL: repoURL,
+		branch:  branch,
+		filters: filters,
+		clients: clients,
 	}
-
-	if lastKnownCommit == currentCommit {
-		return currentCommit, false, nil
-	}
-
-	// Check if there are changes in the filter path
-	hasChanges, err := c.hasPathChanges(clonePath, lastKnownCommit, currentCommit)
-	if err != nil {
-		return currentCommit, false, err
-	}
-
-	return currentCommit, hasChanges, nil
 }
 
 // cloneRepo clones the repository to a temporary directory.
@@ -84,19 +73,6 @@ func (c *Client) getCurrentCommit(repoPath string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// hasPathChanges checks if there are changes in the specified path between two commits.
-func (c *Client) hasPathChanges(repoPath, fromCommit, toCommit string) (bool, error) {
-	// Use git diff to check for changes in the filter path
-	cmd := exec.Command("git", "-C", repoPath, "diff", fromCommit, toCommit, "--", c.filter)
-	output, err := cmd.Output()
-	if err != nil {
-		// If no changes, git returns non-zero but we still have output
-	}
-
-	diff := strings.TrimSpace(string(output))
-	return len(diff) > 0, nil
-}
-
 // GetChangedFiles returns the list of changed files in the filter path between two commits.
 func (c *Client) GetChangedFiles(workDir, fromCommit, toCommit string) ([]string, error) {
 	clonePath, err := c.cloneRepo(workDir)
@@ -105,16 +81,43 @@ func (c *Client) GetChangedFiles(workDir, fromCommit, toCommit string) ([]string
 	}
 	defer os.RemoveAll(clonePath)
 
-	cmd := exec.Command("git", "-C", clonePath, "diff", "--name-only", fromCommit, toCommit, "--", c.filter)
+	return c.getChangedFilesInternal(clonePath, fromCommit, toCommit)
+}
+
+// GetChangedFilesForFilter is used by MultiClient to check a specific filter.
+func (c *Client) GetChangedFilesForFilter(workDir, fromCommit, toCommit, filter string) ([]string, error) {
+	clonePath, err := c.cloneRepo(workDir)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(clonePath)
+
+	cmd := exec.Command("git", "-C", clonePath, "diff", "--name-only", fromCommit, toCommit, "--", filter)
 	output, err := cmd.Output()
 	if err != nil {
-		// Exit code 1 means no changes found
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get changed files: %w", err)
 	}
 
+	return parseFileList(string(output)), nil
+}
+
+func (c *Client) getChangedFilesInternal(repoPath, fromCommit, toCommit string) ([]string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "diff", "--name-only", fromCommit, toCommit, "--", c.filter)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get changed files: %w", err)
+	}
+
+	return parseFileList(string(output)), nil
+}
+
+func parseFileList(output string) []string {
 	files := strings.Split(strings.TrimSpace(string(output)), "\n")
 	var result []string
 	for _, f := range files {
@@ -122,8 +125,7 @@ func (c *Client) GetChangedFiles(workDir, fromCommit, toCommit string) ([]string
 			result = append(result, f)
 		}
 	}
-
-	return result, nil
+	return result
 }
 
 // CloneAtCommit clones the repository and checks out the specific commit.
@@ -157,4 +159,72 @@ func (c *Client) CloneAtCommit(workDir, commitSHA string) (string, error) {
 	}
 
 	return clonePath, nil
+}
+
+// HasChanges checks if there are any changes in the specified path within the repository.
+func (c *MultiClient) HasChanges(workDir, lastKnownCommit string) (string, bool, error) {
+	client := c.clients[0]
+	clonePath, err := client.cloneRepo(workDir)
+	if err != nil {
+		return "", false, err
+	}
+	defer os.RemoveAll(clonePath)
+
+	currentCommit, err := client.getCurrentCommit(clonePath)
+	if err != nil {
+		return "", false, err
+	}
+
+	if lastKnownCommit == "" || lastKnownCommit == currentCommit {
+		return currentCommit, false, nil
+	}
+
+	for _, cli := range c.clients {
+		hasChanges, err := cli.hasPathChangesInternal(clonePath, lastKnownCommit, currentCommit)
+		if err != nil {
+			return currentCommit, false, err
+		}
+		if hasChanges {
+			return currentCommit, true, nil
+		}
+	}
+
+	return currentCommit, false, nil
+}
+
+func (c *Client) hasPathChangesInternal(repoPath, fromCommit, toCommit string) (bool, error) {
+	cmd := exec.Command("git", "-C", repoPath, "diff", fromCommit, toCommit, "--", c.filter)
+	output, err := cmd.Output()
+	if err != nil {
+		// Exit code 1 means no changes found
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		// Some git versions exit with 0 even with changes
+	}
+	return len(strings.TrimSpace(string(output))) > 0, nil
+}
+
+// GetChangedFiles returns all changed files across all filters.
+func (c *MultiClient) GetChangedFiles(workDir, fromCommit, toCommit string) ([]string, error) {
+	var allFiles []string
+	for _, cli := range c.clients {
+		files, err := cli.GetChangedFiles(workDir, fromCommit, toCommit)
+		if err != nil {
+			return nil, err
+		}
+		allFiles = append(allFiles, files...)
+	}
+	return allFiles, nil
+}
+
+// GetChangedFilesForFilter returns changed files for a specific filter.
+func (c *MultiClient) GetChangedFilesForFilter(workDir, fromCommit, toCommit, filter string) ([]string, error) {
+	return c.clients[0].GetChangedFilesForFilter(workDir, fromCommit, toCommit, filter)
+}
+
+// CloneAtCommit clones the repository and checks out the specific commit.
+func (c *MultiClient) CloneAtCommit(workDir, commitSHA string) (string, error) {
+	client := c.clients[0]
+	return client.CloneAtCommit(workDir, commitSHA)
 }
