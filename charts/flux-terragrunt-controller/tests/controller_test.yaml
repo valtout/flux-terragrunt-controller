@@ -1,0 +1,177 @@
+suite: Controller deployment tests
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+  - templates/rbac.yaml
+  - templates/serviceaccount.yaml
+tests:
+  - it: should render a deployment with default values
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-flux-terragrunt-controller
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: flux-terragrunt-controller
+      - isNull:
+          path: spec.template.spec.containers[0].resources
+      - isNull:
+          path: spec.template.spec.nodeSelector
+      - isNull:
+          path: spec.template.spec.tolerations
+
+  - it: should render with custom replica count
+    set:
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: should render with custom image values
+    set:
+      image.repository: my-registry/my-image
+      image.tag: v1.2.3
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: my-registry/my-image:v1.2.3
+
+  - it: should render with custom resources
+    set:
+      resources:
+        limits:
+          cpu: 500m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 64Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 500m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 256Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 100m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 64Mi
+
+  - it: should render with node selector
+    set:
+      nodeSelector:
+        disktype: ssd
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.disktype
+          value: ssd
+
+  - it: should render tolerations
+    set:
+      tolerations:
+        - key: "key1"
+          operator: "Equal"
+          value: "value1"
+          effect: "NoSchedule"
+    asserts:
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: key1
+      - equal:
+          path: spec.template.spec.tolerations[0].effect
+          value: NoSchedule
+
+  - it: should render affinity rules
+    set:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: "zone"
+                    operator: In
+                    values:
+                      - us-east-1
+    asserts:
+      - isNotNull:
+          path: spec.template.spec.affinity
+
+  - it: should render service account
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-flux-terragrunt-controller
+
+  - it: should render ClusterRole with correct permissions
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-flux-terragrunt-controller
+      - equal:
+          path: rules[0].apiGroups[0]
+          value: terragrunt.run
+      - equal:
+          path: rules[0].resources[0]
+          value: units
+      - equal:
+          path: rules[1].apiGroups[0]
+          value: source.toolkit.fluxcd.io
+      - equal:
+          path: rules[1].resources[0]
+          value: gitrepositories
+
+  - it: should render ClusterRoleBinding
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-flux-terragrunt-controller
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+      - equal:
+          path: subjects[0].name
+          value: RELEASE-NAME-flux-terragrunt-controller
+
+  - it: should render configmap with default values
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-flux-terragrunt-controller-config
+
+  - it: should render with metrics enabled
+    set:
+      metrics:
+        enabled: true
+        port: 9090
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9090
+
+  - it: should set METRICS_BIND_ADDRESS env var when metrics enabled
+    set:
+      metrics:
+        enabled: true
+        port: 9090
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          value:
+            name: METRICS_BIND_ADDRESS
+            value: ":9090"
