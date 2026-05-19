@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: { { include "flux-terragrunt-controller.fullname" . } }
+  labels: { { - include "flux-terragrunt-controller.labels" . | nindent 4 } }
+spec:
+  replicas: { { .Values.replicaCount } }
+  selector:
+    matchLabels:
+      {
+        { - include "flux-terragrunt-controller.selectorLabels" . | nindent 6 },
+      }
+  template:
+    metadata:
+      labels:
+        {
+          {
+            - include "flux-terragrunt-controller.selectorLabels" . | nindent 8,
+          },
+        }
+    spec:
+      serviceAccountName:
+        { { include "flux-terragrunt-controller.serviceAccountName" . } }
+      containers:
+        - name: { { .Chart.Name } }
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: { { .Values.image.pullPolicy } }
+          ports:
+            - name: http
+              containerPort: 8080
+          args:
+            - "--metrics-bind-address=:8080"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources: { { - toYaml .Values.resources | nindent 12 } }

@@ -1,0 +1,22 @@
+replicaCount: 1
+
+image:
+  repository: flux-terragrunt-controller
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+metrics:
+  enabled: false
+  port: 8080

@@ -1,0 +1,24 @@
+name: helm-template
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Render chart
+        run: |
+          helm template flux-terragrunt-controller ./charts/flux-terragrunt-controller > /tmp/rendered.yaml
+          test -s /tmp/rendered.yaml
+
