@@ -1,0 +1,32 @@
+.git
+.gitignore
+
+# node/yarn (if any)
+node_modules
+dist
+build
+
+# IDE/editor
+.vscode
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# Local temp files
+tmp/
+tmp
+
+# Helm packaging output
+*.tgz
+
+# Go build artifacts
+bin/
+out/
+*.exe
+*.out
+
+# Docker-related files should still be included as needed, but ignore caches
+**/.cache
+

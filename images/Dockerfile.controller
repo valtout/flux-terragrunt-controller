@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+
+# -------- Builder --------
+FROM golang:1.26.3-alpine AS builder
+
+WORKDIR /src
+
+# Install build deps
+RUN apk add --no-cache ca-certificates git
+
+# Copy go mod/sum first for better layer caching
+COPY go.mod ./
+
+RUN go mod download
+
+# Copy the rest of the source
+COPY . .
+
+# Build a static-ish linux binary
+# We disable CGO to make the binary usable in minimal images.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags="-s -w" -o /out/flux-terragrunt-controller ./cmd/flux-terragrunt-controller
+
+# -------- Runtime --------
+FROM gcr.io/distroless/static-debian12:nonroot
+
+# Non-root user is already set by distroless image.
+WORKDIR /app
+
+COPY --from=builder /out/flux-terragrunt-controller /app/flux-terragrunt-controller
+
+# Controller listens on :8080 by default (see main.go)
+EXPOSE 8080
+
+ENTRYPOINT ["/app/flux-terragrunt-controller"]
+
