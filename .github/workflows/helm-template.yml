@@ -2,8 +2,12 @@ name: helm-template
 
 on:
   pull_request:
+    paths:
+      - 'charts/**'
   push:
     branches: ["**"]
+    paths:
+      - 'charts/**'
 
 jobs:
   helm:

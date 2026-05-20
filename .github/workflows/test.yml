@@ -2,8 +2,18 @@ name: test
 
 on:
   pull_request:
+    paths:
+      - 'cmd/**'
+      - 'config/**'
+      - 'go.mod'
+      - 'go.sum'
   push:
     branches: ["**"]
+    paths:
+      - 'cmd/**'
+      - 'config/**'
+      - 'go.mod'
+      - 'go.sum'
 
 jobs:
   unit:

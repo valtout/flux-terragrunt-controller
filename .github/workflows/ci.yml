@@ -5,9 +5,21 @@ on:
     branches:
       - main
       - kick-off
+    paths:
+      - 'cmd/**'
+      - 'config/**'
+      - 'charts/**'
+      - 'go.mod'
+      - 'go.sum'
   pull_request:
     branches:
       - main
+    paths:
+      - 'cmd/**'
+      - 'config/**'
+      - 'charts/**'
+      - 'go.mod'
+      - 'go.sum'
 
 env:
   ENVTEST_K8S_VERSION: '1.29'

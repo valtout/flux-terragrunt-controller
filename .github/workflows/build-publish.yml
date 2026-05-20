@@ -6,9 +6,21 @@ on:
       - main
     tags:
       - 'v*'
+    paths:
+      - 'images/**'
+      - 'cmd/**'
+      - 'config/**'
+      - 'go.mod'
+      - 'go.sum'
   pull_request:
     branches:
       - main
+    paths:
+      - 'images/**'
+      - 'cmd/**'
+      - 'config/**'
+      - 'go.mod'
+      - 'go.sum'
 
 env:
   REGISTRY: ghcr.io
