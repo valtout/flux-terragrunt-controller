@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	github.com/fluxcd/pkg/apis/meta v0.3.0
-	github.com/fluxcd/source-controller/api/v1 v1.8.5
+	github.com/fluxcd/source-controller/api v1.8.5
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v0.29.0
