@@ -2,18 +2,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "flux-terragrunt-controller.fullname" . }}
-  labels: {{ - include "flux-terragrunt-controller.labels" . | nindent 4 }}
+  labels: {{- include "flux-terragrunt-controller.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {
-        { - include "flux-terragrunt-controller.selectorLabels" . | nindent 6 },
-      }
+      {{- include "flux-terragrunt-controller.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{ - include "flux-terragrunt-controller.selectorLabels" . | nindent 8, }}
+        {{- include "flux-terragrunt-controller.selectorLabels" . | nindent 8, }}
     spec:
       serviceAccountName:
         {{ include "flux-terragrunt-controller.serviceAccountName" . }}
@@ -38,4 +36,4 @@ spec:
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 20
-          resources: {{ - toYaml .Values.resources | nindent 12 }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
