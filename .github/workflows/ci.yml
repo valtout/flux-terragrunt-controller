@@ -83,15 +83,16 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Set up envtest
-        uses: azure/setup-envtest@v2
-        with:
-          k8s-version: ${{ env.ENVTEST_K8S_VERSION }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install envtest
+        run: |
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+      - name: Setup envtest binaries
+        run: |
+          setup-envtest use ${{ env.ENVTEST_K8S_VERSION }} -p path > envtest-path.txt
+          echo "KUBEBUILDER_ASSETS=$(cat envtest-path.txt)" >> $GITHUB_ENV
 
       - name: Run integration tests
-        env:
-          KUBEBUILDER_ASSETS: $(setup-envtest use -p path ${{ env.ENVTEST_K8S_VERSION }})
         run: go test -v -run TestIntegration ./pkg/controller/...
 
   helm-test:
