@@ -3,5 +3,5 @@ name: flux-terragrunt-controller
 description: A Kubernetes controller for flux cd enabling utilization of terragrunt for gitops.
 
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.0.1
+appVersion: "0.0.1"
