@@ -39,7 +39,7 @@ func TestMain(m *testing.M) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, err := testEnv.Start()
+	_, err := testEnv.Start()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to start envtest: %v", err))
 	}

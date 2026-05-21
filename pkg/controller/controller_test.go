@@ -9,12 +9,15 @@ import (
 	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
 
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"k8s.io/apimachinery/pkg/api/meta"
 )
 
 const (
@@ -34,30 +37,30 @@ func newTestScheme() *runtime.Scheme {
 }
 
 type mockGitChecker struct {
-	hasChangesResult       func(string, bool, error)
-	getChangedFilesResult func([]string, error)
-	cloneAtCommitResult    (string, error)
+	hasChangesResult       func() (string, bool, error)
+	getChangedFilesResult func() ([]string, error)
+	cloneAtCommitResult    func() (string, error)
 	callLog                []string
 }
 
 func (m *mockGitChecker) HasChanges(workDir, lastKnownCommit string) (string, bool, error) {
 	m.callLog = append(m.callLog, fmt.Sprintf("HasChanges(%s,%s)", workDir, lastKnownCommit))
-	return m.hasChangesResult
+	return m.hasChangesResult()
 }
 
 func (m *mockGitChecker) GetChangedFiles(workDir, fromCommit, toCommit string) ([]string, error) {
 	m.callLog = append(m.callLog, fmt.Sprintf("GetChangedFiles(%s,%s,%s)", workDir, fromCommit, toCommit))
-	return m.getChangedFilesResult, nil
+	return m.getChangedFilesResult()
 }
 
 func (m *mockGitChecker) GetChangedFilesForFilter(workDir, fromCommit, toCommit, filter string) ([]string, error) {
 	m.callLog = append(m.callLog, fmt.Sprintf("GetChangedFilesForFilter(%s,%s,%s,%s)", workDir, fromCommit, toCommit, filter))
-	return m.getChangedFilesResult, nil
+	return m.getChangedFilesResult()
 }
 
 func (m *mockGitChecker) CloneAtCommit(workDir, commitSHA string) (string, error) {
 	m.callLog = append(m.callLog, fmt.Sprintf("CloneAtCommit(%s,%s)", workDir, commitSHA))
-	return m.cloneAtCommitResult
+	return m.cloneAtCommitResult()
 }
 
 type mockStatusWriter struct {
@@ -69,16 +72,21 @@ type mockStatusWriter struct {
 	err          error
 }
 
-func (m *mockStatusWriter) Update(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+func (m *mockStatusWriter) Update(_ context.Context, subResource client.Object, _ ...client.SubResourceUpdateOption) error {
 	m.updateCalled = true
-	m.updateObj = obj
 	return m.updateErr
 }
 
-func (m *mockStatusWriter) Patch(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) error {
-	m.patchCalled = true
-	m.patchObj = obj
-	return m.err
+func (m *mockStatusWriter) Patch(_ context.Context, subResource client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
+	return nil
+}
+
+func (m *mockStatusWriter) Create(_ context.Context, subResource client.Object, obj client.Object, _ ...client.SubResourceCreateOption) error {
+	return nil
+}
+
+func (m *mockStatusWriter) Apply(_ context.Context, obj runtime.ApplyConfiguration, _ ...client.SubResourceApplyOption) error {
+	return nil
 }
 
 type mockTracker struct {
@@ -170,11 +178,31 @@ func (m *mockClient) DeleteAllOf(_ context.Context, obj client.Object, _ ...clie
 	return nil
 }
 
+func (m *mockClient) Apply(_ context.Context, obj runtime.ApplyConfiguration, _ ...client.ApplyOption) error {
+	return nil
+}
+
 func (m *mockClient) DryRun(_ context.Context) client.Writer {
 	return m
 }
 
-func (m *mockClient) FieldValidator() client.FieldValidator {
+func (m *mockClient) GroupVersionKindFor(_ runtime.Object) (schema.GroupVersionKind, error) {
+	return schema.GroupVersionKind{}, nil
+}
+
+func (m *mockClient) IsObjectNamespaced(_ runtime.Object) (bool, error) {
+	return false, nil
+}
+
+func (m *mockClient) RESTMapper() meta.RESTMapper {
+	return nil
+}
+
+func (m *mockClient) Scheme() *runtime.Scheme {
+	return nil
+}
+
+func (m *mockClient) SubResource(_ string) client.SubResourceClient {
 	return nil
 }
 
@@ -218,12 +246,12 @@ func TestReconcile_WithChanges(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		hasChangesResult:       (testCurrentCommit, true, nil),
-		getChangedFilesResult: ([]string{"terraform/main.tf", "terraform/vars.tf"}, nil),
+		hasChangesResult:       func() (string, bool, error) { return testCurrentCommit, true, nil },
+		getChangedFilesResult: func() ([]string, error) { return []string{"terraform/main.tf", "terraform/vars.tf"}, nil },
 	}
 
 	recorder := record.NewFakeRecorder(10)
-	logger := log.NullLogger{}
+	logger := logr.Discard()
 
 	reconciler := &UnitsReconciler{
 		Client:           mockCli,
@@ -297,12 +325,12 @@ func TestReconcile_NoChanges(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		hasChangesResult:       (testCurrentCommit, false, nil),
-		getChangedFilesResult: (nil, nil),
+		hasChangesResult:       func() (string, bool, error) { return testCurrentCommit, false, nil },
+		getChangedFilesResult: func() ([]string, error) { return nil, nil },
 	}
 
 	recorder := record.NewFakeRecorder(10)
-	logger := log.NullLogger{}
+	logger := logr.Discard()
 
 	reconciler := &UnitsReconciler{
 		Client:           mockCli,
@@ -345,7 +373,7 @@ func TestReconcile_NoGitRepository(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-unit", Namespace: "default"}] = units
 
 	recorder := record.NewFakeRecorder(10)
-	logger := log.NullLogger{}
+	logger := logr.Discard()
 
 	reconciler := &UnitsReconciler{
 		Client:   mockCli,
@@ -373,7 +401,7 @@ func TestReconcile_UnitNotFound(t *testing.T) {
 	mockCli := newMockClient()
 
 	recorder := record.NewFakeRecorder(10)
-	logger := log.NullLogger{}
+	logger := logr.Discard()
 
 	reconciler := &UnitsReconciler{
 		Client:   mockCli,
@@ -436,11 +464,11 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		getChangedFilesResult: ([]string{"terraform/main.tf"}, nil),
+		getChangedFilesResult: func() ([]string, error) { return []string{"terraform/main.tf"}, nil },
 	}
 
 	recorder := record.NewFakeRecorder(10)
-	logger := log.NullLogger{}
+	logger := logr.Discard()
 
 	reconciler := &UnitsReconciler{
 		Client:           mockCli,
@@ -455,7 +483,7 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 		NamespacedName: client.ObjectKey{Name: "test-unit", Namespace: "default"},
 	}
 
-	result, err := reconciler.Reconcile(context.Background(), req)
+	_, err := reconciler.Reconcile(context.Background(), req)
 
 	if err != nil {
 		t.Fatalf("Reconcile returned unexpected error: %v", err)
@@ -506,11 +534,11 @@ func TestReconcile_GitOperationError(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		getChangedFilesResult: (nil, fmt.Errorf("git operation failed")),
+		getChangedFilesResult: func() ([]string, error) { return nil, fmt.Errorf("git operation failed") },
 	}
 
 	recorder := record.NewFakeRecorder(10)
-	logger := log.NullLogger{}
+	logger := logr.Discard()
 
 	reconciler := &UnitsReconciler{
 		Client:           mockCli,

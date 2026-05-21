@@ -9,7 +9,6 @@ import (
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -196,7 +195,7 @@ func (r *UnitsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // GetObjectIdentifier returns a namespaced name for the object.
 func GetObjectIdentifier(obj client.Object) string {
-	return types.ObjectKeyFromObject(obj).String()
+	return client.ObjectKeyFromObject(obj).String()
 }
 
 // Register adds the controller to the manager.

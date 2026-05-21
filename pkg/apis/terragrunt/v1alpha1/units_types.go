@@ -3,6 +3,13 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+// Interface assert
+var (
+	_ runtime.Object = &Units{}
+	_ runtime.Object = &UnitsList{}
 )
 
 // EnvVar represents a Kubernetes environment variable, supporting secret references.
@@ -129,4 +136,136 @@ type UnitsList struct {
 
 func init() {
 	SchemeBuilder.Register(&Units{}, &UnitsList{})
+}
+
+// DeepCopyObject implements runtime.Object
+func (in *Units) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := &Units{}
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyObject implements runtime.Object
+func (in *UnitsList) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := &UnitsList{}
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *Units) DeepCopyInto(out *Units) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	out.ObjectMeta = in.ObjectMeta
+	in.Spec.DeepCopyInto(&out.Spec)
+	in.Status.DeepCopyInto(&out.Status)
+}
+
+// DeepCopy creates a deep copy of Units.
+func (in *Units) DeepCopy() *Units {
+	if in == nil {
+		return nil
+	}
+	out := new(Units)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *UnitsList) DeepCopyInto(out *UnitsList) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	out.ListMeta = in.ListMeta
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]Units, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+}
+
+// DeepCopy creates a deep copy of UnitsList.
+func (in *UnitsList) DeepCopy() *UnitsList {
+	if in == nil {
+		return nil
+	}
+	out := new(UnitsList)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *UnitsSpec) DeepCopyInto(out *UnitsSpec) {
+	*out = *in
+	if in.Filters != nil {
+		in, out := &in.Filters, &out.Filters
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.Env != nil {
+		in, out := &in.Env, &out.Env
+		*out = make([]EnvVar, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.TfVars != nil {
+		in, out := &in.TfVars, &out.TfVars
+		*out = make([]TfVarEntry, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *UnitsStatus) DeepCopyInto(out *UnitsStatus) {
+	*out = *in
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *EnvVar) DeepCopyInto(out *EnvVar) {
+	*out = *in
+	if in.ValueFrom != nil {
+		in, out := &in.ValueFrom, &out.ValueFrom
+		*out = new(EnvVarSource)
+		(*in).DeepCopyInto(*out)
+	}
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *EnvVarSource) DeepCopyInto(out *EnvVarSource) {
+	*out = *in
+	if in.SecretKeyRef != nil {
+		in, out := &in.SecretKeyRef, &out.SecretKeyRef
+		*out = new(corev1.SecretKeySelector)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.ConfigMapKeyRef != nil {
+		in, out := &in.ConfigMapKeyRef, &out.ConfigMapKeyRef
+		*out = new(corev1.ConfigMapKeySelector)
+		(*in).DeepCopyInto(*out)
+	}
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *TfVarEntry) DeepCopyInto(out *TfVarEntry) {
+	*out = *in
+	if in.SecretRef != nil {
+		in, out := &in.SecretRef, &out.SecretRef
+		*out = new(TfVarSecretRef)
+		**out = **in
+	}
+}
+
+// DeepCopyInto copies the receiver into out.
+func (in *TfVarSecretRef) DeepCopyInto(out *TfVarSecretRef) {
+	*out = *in
 }

@@ -173,7 +173,7 @@ func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Unit
 		},
 	}
 
-	createdJob, err := r.clientset.BatchV1().Jobs(r.namespace).Create(ctx, job)
+	createdJob, err := r.clientset.BatchV1().Jobs(r.namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create runner job: %w", err)
 	}
@@ -205,10 +205,11 @@ func (r *Runner) CleanupOldJobs(ctx context.Context, unitsName string, retention
 		return err
 	}
 
-	cutoff := metav1.Now().Add(-24 * time.Hour * time.Duration(retentionDays))
+	cutoffTime := metav1.Now().Add(-24 * time.Hour * time.Duration(retentionDays))
+	cutoff := &metav1.Time{Time: cutoffTime}
 
 	for _, job := range jobs.Items {
-		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Before(&cutoff) {
+		if job.Status.CompletionTime != nil && job.Status.CompletionTime.Before(cutoff) {
 			if err := r.DeleteJob(ctx, job.Name); err != nil {
 				// Log but continue
 				continue

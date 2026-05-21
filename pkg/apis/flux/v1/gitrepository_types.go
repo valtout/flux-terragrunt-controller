@@ -15,7 +15,7 @@ type GitRepositorySpec struct {
 
 	// SecretRef is a reference to the secret containing the credentials.
 	// +optional
-	SecretRef *fluxmeta.LocalSecretReference `json:"secretRef,omitempty"`
+	SecretRef *fluxmeta.LocalObjectReference `json:"secretRef,omitempty"`
 
 	// Interval is the frequency at which to check for updates.
 	// +required
@@ -65,7 +65,7 @@ type GitRepositoryStatus struct {
 
 	// Conditions holds the conditions for the GitRepository.
 	// +optional
-	Conditions []fluxmeta.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// ObservedGeneration is the last observed generation of the resource.
 	// +optional
@@ -113,7 +113,27 @@ type GitRepositoryList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&GitRepository{}, &GitRepositoryList{})
+	SchemeBuilder.Register(AddToScheme)
+}
+
+// DeepCopyObject implements runtime.Object
+func (in *GitRepository) DeepCopyObject() apis.Object {
+	if in == nil {
+		return nil
+	}
+	out := &GitRepository{}
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyObject implements runtime.Object
+func (in *GitRepositoryList) DeepCopyObject() apis.Object {
+	if in == nil {
+		return nil
+	}
+	out := &GitRepositoryList{}
+	in.DeepCopyInto(out)
+	return out
 }
 
 // DeepCopyInto copies the receiver into out.
@@ -136,11 +156,35 @@ func (in *GitRepository) DeepCopy() *GitRepository {
 }
 
 // DeepCopyInto copies the receiver into out.
+func (in *GitRepositoryList) DeepCopyInto(out *GitRepositoryList) {
+	*out = *in
+	out.TypeMeta = in.TypeMeta
+	out.ListMeta = in.ListMeta
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]GitRepository, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+}
+
+// DeepCopy creates a deep copy of GitRepositoryList.
+func (in *GitRepositoryList) DeepCopy() *GitRepositoryList {
+	if in == nil {
+		return nil
+	}
+	out := new(GitRepositoryList)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto copies the receiver into out.
 func (in *GitRepositorySpec) DeepCopyInto(out *GitRepositorySpec) {
 	*out = *in
 	if in.SecretRef != nil {
 		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(fluxmeta.LocalSecretReference)
+		*out = new(fluxmeta.LocalObjectReference)
 		**out = **in
 	}
 	if in.Timeout != nil {
@@ -165,7 +209,7 @@ func (in *GitRepositoryStatus) DeepCopyInto(out *GitRepositoryStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]fluxmeta.Condition, len(*in))
+		*out = make([]metav1.Condition, len(*in))
 		copy(*out, *in)
 	}
 }
