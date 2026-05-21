@@ -34,8 +34,8 @@ func newTestScheme() *runtime.Scheme {
 }
 
 type mockGitChecker struct {
-	hasChangesResult       (string, bool, error)
-	getChangedFilesResult ([]string, error)
+	hasChangesResult       func(string, bool, error)
+	getChangedFilesResult func([]string, error)
 	cloneAtCommitResult    (string, error)
 	callLog                []string
 }
