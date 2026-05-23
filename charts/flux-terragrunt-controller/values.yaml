@@ -6,6 +6,15 @@ image:
   tag: "0.0.1"
   pullPolicy: IfNotPresent
 
+runner:
+  image:
+    repository: flux-terragrunt-runner
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+
 serviceAccount:
   create: true
   name: ""

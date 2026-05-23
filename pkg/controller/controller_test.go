@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	testGitRepoURL    = "https://github.com/example/repo.git"
+	testGitRepoURL    = "https://github.com/valtout/flux-terragrunt-controller.git"
 	testBranch        = "main"
 	testFilters       = "terraform/"
 	testLastCommitSHA = "abc123"
@@ -597,15 +597,15 @@ func TestUnitsStatus(t *testing.T) {
 
 func TestGitRepositorySpec(t *testing.T) {
 	spec := fluxv1.GitRepositorySpec{
-		URL:      "https://github.com/example/repo.git",
+		URL:      "https://github.com/valtout/flux-terragrunt-controller.git",
 		Interval: metav1.Duration{Duration: 1 * time.Minute},
 		Ref: &fluxv1.GitRef{
 			Branch: "main",
 		},
 	}
 
-	if spec.URL != "https://github.com/example/repo.git" {
-		t.Errorf("Expected URL to be 'https://github.com/example/repo.git', got %s", spec.URL)
+	if spec.URL != "https://github.com/valtout/flux-terragrunt-controller.git" {
+		t.Errorf("Expected URL to be 'https://github.com/valtout/flux-terragrunt-controller.git', got %s", spec.URL)
 	}
 	if spec.Ref == nil || spec.Ref.Branch != "main" {
 		t.Errorf("Expected Ref.Branch to be 'main'")

@@ -101,7 +101,7 @@ func TestIntegration_UnitsReconciliation(t *testing.T) {
 			Namespace: ns.Name,
 		},
 		Spec: fluxv1.GitRepositorySpec{
-			URL:      "https://github.com/example/repo.git",
+			URL:      "https://github.com/valtout/flux-terragrunt-controller.git",
 			Interval: metav1.Duration{Duration: 1 * time.Minute},
 		},
 		Status: fluxv1.GitRepositoryStatus{

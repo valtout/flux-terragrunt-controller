@@ -25,6 +25,11 @@ spec:
               containerPort: 8080
           args:
             - "--metrics-bind-address=:8080"
+          env:
+            - name: RUNNER_IMAGE
+              value: "{{ .Values.runner.image.repository }}:{{ .Values.runner.image.tag }}"
+            - name: RUNNER_SERVICE_ACCOUNT
+              value: {{ include "flux-terragrunt-controller.serviceAccountName" . }}
           readinessProbe:
             httpGet:
               path: /readyz
