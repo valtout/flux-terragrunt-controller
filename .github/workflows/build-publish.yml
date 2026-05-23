@@ -35,6 +35,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       is_release: ${{ steps.version.outputs.is_release }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Determine version
         id: version
         run: |
@@ -170,14 +173,8 @@ jobs:
           name: runner-image
           path: /tmp
 
-      - name: Load controller image
-        run: docker load --input /tmp/controller.tar
+      - name: Load Docker images
+        run: make docker-load-images
 
-      - name: Load runner image
-        run: docker load --input /tmp/runner.tar
-
-      - name: Inspect controller image
-        run: docker inspect ${{ env.CONTROLLER_IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
-
-      - name: Inspect runner image
-        run: docker inspect ${{ env.RUNNER_IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
+      - name: Inspect Docker images
+        run: make docker-inspect

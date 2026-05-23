@@ -22,9 +22,6 @@ on:
       - 'go.mod'
       - 'go.sum'
 
-env:
-  ENVTEST_K8S_VERSION: '1.29'
-
 jobs:
   test:
     name: Unit Tests
@@ -53,7 +50,7 @@ jobs:
         run: go mod download
 
       - name: Run unit tests
-        run: go test -v -short ./...
+        run: make test
 
       - name: Verify code compiles
         run: go build ./...
@@ -84,18 +81,8 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Install envtest
-        run: |
-          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
-
-      - name: Setup envtest binaries
-        run: |
-          env_version="${{ env.ENVTEST_K8S_VERSION }}"
-          setup-envtest use "$env_version" -p path > envtest-path.txt
-          echo "KUBEBUILDER_ASSETS=$(cat envtest-path.txt)" >> "$GITHUB_ENV"
-
       - name: Run integration tests
-        run: go test -v -run TestIntegration ./pkg/controller/...
+        run: make integration-test
 
   helm-test:
     name: Helm Chart Tests
@@ -118,17 +105,8 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2
 
-      - name: Run helm unittest
-        run: |
-          helm unittest ./charts/flux-terragrunt-controller --with-subchart_tests || true
-
-      - name: Run chart-testing (lint)
-        run: |
-          ct lint --all --validate-maintainers=false
-
-      - name: Validate YAML files
-        run: |
-          find . -name "*.yaml" -path "./charts/*" -exec yamllint {} \; || true
+      - name: Run helm chart tests
+        run: make helm-test
 
   lint:
     name: Lint
@@ -143,10 +121,5 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
+      - name: Run lint
+        run: make lint
