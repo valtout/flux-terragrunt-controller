@@ -12,6 +12,13 @@ var (
 	_ runtime.Object = &UnitsList{}
 )
 
+// LocalObjectReference contains enough information to locate the referenced Kubernetes resource object.
+type LocalObjectReference struct {
+	// Name of the referent.
+	// +required
+	Name string `json:"name"`
+}
+
 // EnvVar represents a Kubernetes environment variable, supporting secret references.
 // +kubebuilder:object:generate=true
 type EnvVar struct {
@@ -70,6 +77,10 @@ type TfVarSecretRef struct {
 
 // UnitsSpec defines the spec for a Units resource.
 type UnitsSpec struct {
+	// SourceRef references the GitRepository resource to monitor.
+	// +required
+	SourceRef LocalObjectReference `json:"sourceRef"`
+
 	// Filters are the paths within the GitRepository to monitor for changes.
 	// +required
 	Filters []string `json:"filters"`

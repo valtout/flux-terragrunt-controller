@@ -34,9 +34,19 @@ spec:
             spec:
               type: object
               required:
+                - sourceRef
                 - filters
                 - branch
               properties:
+                sourceRef:
+                  type: object
+                  description: "Reference to the GitRepository resource to monitor"
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                      description: "Name of the GitRepository resource"
                 filters:
                   type: array
                   items:

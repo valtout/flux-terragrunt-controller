@@ -10,10 +10,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
@@ -61,18 +63,14 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to get Units: %w", err)
 	}
 
-	// Find the GitRepository in the same namespace
-	gitRepos := &fluxv1.GitRepositoryList{}
-	if err := r.List(ctx, gitRepos, client.InNamespace(req.Namespace)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list GitRepositories: %w", err)
-	}
-
-	var gitRepo *fluxv1.GitRepository
-	for i := range gitRepos.Items {
-		if gitRepos.Items[i].Status.Artifact != nil {
-			gitRepo = &gitRepos.Items[i]
-			break
+	// Find the GitRepository referenced by this Units resource
+	gitRepo := &fluxv1.GitRepository{}
+	if err := r.Get(ctx, client.ObjectKey{Name: units.Spec.SourceRef.Name, Namespace: req.Namespace}, gitRepo); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Recorder.Eventf(units, "Warning", "GitRepositoryNotFound", "Referenced GitRepository %s not found in namespace %s", units.Spec.SourceRef.Name, req.Namespace)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
+		return ctrl.Result{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	if gitRepo == nil {
@@ -203,7 +201,39 @@ func (r *UnitsReconciler) newGitClient(repoURL, branch string, filters []string)
 func (r *UnitsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&terragruntv1alpha1.Units{}).
+		Watches(
+			&fluxv1.GitRepository{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueAllUnitsForGitRepo),
+		).
 		Complete(r)
+}
+
+// enqueueAllUnitsForGitRepo finds Units in the same namespace that reference the changed GitRepository
+// and returns reconcile requests for them.
+func (r *UnitsReconciler) enqueueAllUnitsForGitRepo(ctx context.Context, obj client.Object) []reconcile.Request {
+	gitRepo, ok := obj.(*fluxv1.GitRepository)
+	if !ok {
+		return nil
+	}
+
+	unitsList := &terragruntv1alpha1.UnitsList{}
+	if err := r.List(ctx, unitsList, client.InNamespace(gitRepo.GetNamespace())); err != nil {
+		r.Log.Error(err, "failed to list Units for GitRepository watch")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, units := range unitsList.Items {
+		if units.Spec.SourceRef.Name == gitRepo.Name {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      units.Name,
+					Namespace: units.Namespace,
+				},
+			})
+		}
+	}
+	return requests
 }
 
 // GetObjectIdentifier returns a namespaced name for the object.
