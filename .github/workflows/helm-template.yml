@@ -1,3 +1,4 @@
+---
 name: helm-template
 
 on:
@@ -25,4 +26,3 @@ jobs:
         run: |
           helm template flux-terragrunt-controller ./charts/flux-terragrunt-controller > /tmp/rendered.yaml
           test -s /tmp/rendered.yaml
-

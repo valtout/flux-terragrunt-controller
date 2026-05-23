@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
+	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	"flux-terragrunt-controller/pkg/internal/git"
 	"flux-terragrunt-controller/pkg/internal/runner"
 )
@@ -24,13 +24,13 @@ import (
 // UnitsReconciler reconciles a Units object.
 type UnitsReconciler struct {
 	client.Client
-	Log               logr.Logger
-	Scheme            *runtime.Scheme
-	Recorder          record.EventRecorder
-	KubernetesClient  kubernetes.Interface
-	GitClientFactory  func(repoURL, branch string, filters []string) gitChecker
-	TempDir           string
-	RunnerImage       string
+	Log                  logr.Logger
+	Scheme               *runtime.Scheme
+	Recorder             record.EventRecorder
+	KubernetesClient     kubernetes.Interface
+	GitClientFactory     func(repoURL, branch string, filters []string) gitChecker
+	TempDir              string
+	RunnerImage          string
 	RunnerServiceAccount string
 }
 

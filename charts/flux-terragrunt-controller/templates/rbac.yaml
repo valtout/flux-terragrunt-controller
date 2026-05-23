@@ -1,3 +1,4 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -6,23 +7,52 @@ metadata:
     {{- include "flux-terragrunt-controller.labels" . | nindent 4 }}
 rules:
   # Units CRUD
-  - apiGroups: ["terragrunt.run"]
-    resources: ["units"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["terragrunt.run"]
-    resources: ["units/status"]
-    verbs: ["get", "update", "patch"]
+  - apiGroups:
+      - "terragrunt.run"
+    resources:
+      - "units"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+      - "create"
+      - "update"
+      - "patch"
+      - "delete"
+  - apiGroups:
+      - "terragrunt.run"
+    resources:
+      - "units/status"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
   # Flux GitRepository read access
-  - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["gitrepositories"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["gitrepositories/status"]
-    verbs: ["get"]
+  - apiGroups:
+      - "source.toolkit.fluxcd.io"
+    resources:
+      - "gitrepositories"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  - apiGroups:
+      - "source.toolkit.fluxcd.io"
+    resources:
+      - "gitrepositories/status"
+    verbs:
+      - "get"
   # Jobs for terragrunt runner
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups:
+      - "batch"
+    resources:
+      - "jobs"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+      - "create"
+      - "delete"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

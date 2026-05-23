@@ -15,3 +15,7 @@ var (
 	// AddToScheme is a convenience function for adding the types to the scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+func init() {
+	SchemeBuilder.Register(&Units{}, &UnitsList{})
+}

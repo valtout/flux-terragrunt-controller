@@ -33,4 +33,3 @@ COPY --from=builder /out/flux-terragrunt-controller /app/flux-terragrunt-control
 EXPOSE 8080
 
 ENTRYPOINT ["/app/flux-terragrunt-controller"]
-

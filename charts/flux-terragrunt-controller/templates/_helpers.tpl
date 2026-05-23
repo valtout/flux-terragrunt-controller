@@ -21,4 +21,3 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- include "flux-terragrunt-controller.fullname" . }}
 {{- end }}
 {{- end -}}
-

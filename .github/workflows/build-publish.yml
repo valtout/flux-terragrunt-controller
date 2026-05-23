@@ -1,3 +1,4 @@
+---
 name: Build and Publish
 
 on:
@@ -37,21 +38,19 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
             IS_RELEASE=true
-          elif [[ $GITHUB_SHA == $GITHUB_REF ]]; then
-            # Detached HEAD, use short SHA
-            VERSION=0.0.0-${{ github.sha }}
+          elif [[ "$GITHUB_SHA" == "$GITHUB_REF" ]]; then
+            VERSION="0.0.0-${{ github.sha }}"
             IS_RELEASE=false
           else
-            # PR or branch push - use version from branch name or SHA
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            VERSION=0.0.0-$BRANCH_NAME-${{ github.sha }}
+            BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+            VERSION="0.0.0-$BRANCH_NAME-${{ github.sha }}"
             IS_RELEASE=false
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
 
   controller:
     needs: prepare
@@ -75,6 +74,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata for controller
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.CONTROLLER_IMAGE_NAME }}

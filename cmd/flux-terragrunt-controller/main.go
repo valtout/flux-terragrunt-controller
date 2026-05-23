@@ -13,8 +13,8 @@ import (
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
-	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
+	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	"flux-terragrunt-controller/pkg/controller"
 )
 
@@ -39,9 +39,9 @@ func main() {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		config = &rest.Config{
-			Host:    "localhost:6443",
-			QPS:     100,
-			Burst:   100,
+			Host:  "localhost:6443",
+			QPS:   100,
+			Burst: 100,
 		}
 	}
 

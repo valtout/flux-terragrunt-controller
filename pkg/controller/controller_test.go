@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
+	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,12 +21,12 @@ import (
 )
 
 const (
-	testGitRepoURL     = "https://github.com/example/repo.git"
-	testBranch         = "main"
-	testFilters        = "terraform/"
-	testLastCommitSHA  = "abc123"
-	testCurrentCommit  = "def456"
-	testParallelism    = 2
+	testGitRepoURL    = "https://github.com/example/repo.git"
+	testBranch        = "main"
+	testFilters       = "terraform/"
+	testLastCommitSHA = "abc123"
+	testCurrentCommit = "def456"
+	testParallelism   = 2
 )
 
 func newTestScheme() *runtime.Scheme {
@@ -37,10 +37,10 @@ func newTestScheme() *runtime.Scheme {
 }
 
 type mockGitChecker struct {
-	hasChangesResult       func() (string, bool, error)
+	hasChangesResult      func() (string, bool, error)
 	getChangedFilesResult func() ([]string, error)
-	cloneAtCommitResult    func() (string, error)
-	callLog                []string
+	cloneAtCommitResult   func() (string, error)
+	callLog               []string
 }
 
 func (m *mockGitChecker) HasChanges(workDir, lastKnownCommit string) (string, bool, error) {
@@ -215,9 +215,9 @@ func TestReconcile_WithChanges(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: terragruntv1alpha1.UnitsSpec{
-			Filters:      []string{testFilters},
-			Branch:       testBranch,
-			Parallelism:   testParallelism,
+			Filters:     []string{testFilters},
+			Branch:      testBranch,
+			Parallelism: testParallelism,
 		},
 		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: testLastCommitSHA,
@@ -246,7 +246,7 @@ func TestReconcile_WithChanges(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		hasChangesResult:       func() (string, bool, error) { return testCurrentCommit, true, nil },
+		hasChangesResult:      func() (string, bool, error) { return testCurrentCommit, true, nil },
 		getChangedFilesResult: func() ([]string, error) { return []string{"terraform/main.tf", "terraform/vars.tf"}, nil },
 	}
 
@@ -294,9 +294,9 @@ func TestReconcile_NoChanges(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: terragruntv1alpha1.UnitsSpec{
-			Filters:      []string{testFilters},
-			Branch:       testBranch,
-			Parallelism:   testParallelism,
+			Filters:     []string{testFilters},
+			Branch:      testBranch,
+			Parallelism: testParallelism,
 		},
 		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: testCurrentCommit,
@@ -325,7 +325,7 @@ func TestReconcile_NoChanges(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
-		hasChangesResult:       func() (string, bool, error) { return testCurrentCommit, false, nil },
+		hasChangesResult:      func() (string, bool, error) { return testCurrentCommit, false, nil },
 		getChangedFilesResult: func() ([]string, error) { return nil, nil },
 	}
 
@@ -503,9 +503,9 @@ func TestReconcile_GitOperationError(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: terragruntv1alpha1.UnitsSpec{
-			Filters:      []string{testFilters},
-			Branch:       testBranch,
-			Parallelism:   testParallelism,
+			Filters:     []string{testFilters},
+			Branch:      testBranch,
+			Parallelism: testParallelism,
 		},
 		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: testLastCommitSHA,

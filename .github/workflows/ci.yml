@@ -1,3 +1,4 @@
+---
 name: CI
 
 on:
@@ -89,8 +90,9 @@ jobs:
 
       - name: Setup envtest binaries
         run: |
-          setup-envtest use ${{ env.ENVTEST_K8S_VERSION }} -p path > envtest-path.txt
-          echo "KUBEBUILDER_ASSETS=$(cat envtest-path.txt)" >> $GITHUB_ENV
+          env_version="${{ env.ENVTEST_K8S_VERSION }}"
+          setup-envtest use "$env_version" -p path > envtest-path.txt
+          echo "KUBEBUILDER_ASSETS=$(cat envtest-path.txt)" >> "$GITHUB_ENV"
 
       - name: Run integration tests
         run: go test -v -run TestIntegration ./pkg/controller/...

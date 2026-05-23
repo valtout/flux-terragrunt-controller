@@ -26,10 +26,10 @@ func NewClient(repoURL, branch, filter string) *Client {
 
 // MultiClient provides git operations for checking repository changes across multiple filters.
 type MultiClient struct {
-	repoURL  string
-	branch   string
-	filters  []string
-	clients  []*Client
+	repoURL string
+	branch  string
+	filters []string
+	clients []*Client
 }
 
 // NewMultiClient creates a new git client that handles multiple filters.

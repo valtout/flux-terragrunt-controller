@@ -134,10 +134,6 @@ type UnitsList struct {
 	Items           []Units `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&Units{}, &UnitsList{})
-}
-
 // DeepCopyObject implements runtime.Object
 func (in *Units) DeepCopyObject() runtime.Object {
 	if in == nil {

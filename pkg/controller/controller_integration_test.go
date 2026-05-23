@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
 	fluxv1 "flux-terragrunt-controller/pkg/apis/flux/v1"
+	terragruntv1alpha1 "flux-terragrunt-controller/pkg/apis/terragrunt/v1alpha1"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -180,7 +181,7 @@ func TestIntegration_UnitsWithoutGitRepository(t *testing.T) {
 		},
 		Spec: terragruntv1alpha1.UnitsSpec{
 			Filters: []string{"terraform/"},
-			Branch: "main",
+			Branch:  "main",
 		},
 	}
 	if err := k8sClient.Create(ctx, units); err != nil {

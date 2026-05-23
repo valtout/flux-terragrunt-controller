@@ -152,8 +152,8 @@ func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Unit
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						"app.kubernetes.io/managed-by": "flux-terragrunt-controller",
-						"terragrunt.run/units":        units.Name,
-						"terragrunt.run/commit":       commitSHA,
+						"terragrunt.run/units":         units.Name,
+						"terragrunt.run/commit":        commitSHA,
 					},
 				},
 				Spec: corev1.PodSpec{

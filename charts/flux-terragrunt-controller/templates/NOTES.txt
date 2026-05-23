@@ -1,2 +1,1 @@
 This is a scaffolded Helm chart for flux-terragrunt-controller.
-

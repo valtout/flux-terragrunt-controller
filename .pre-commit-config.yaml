@@ -1,5 +1,38 @@
+---
 repos:
-  - repo: https://github.com/lubgr/go-pre-commit-hooks
-    rev: v0.1.1
+  - repo: https://github.com/TekWizely/pre-commit-golang
+    rev: v1.0.0-rc.4
     hooks:
-      - id: mod-tidy
+      - id: go-fmt
+      - id: go-mod-tidy
+
+  - repo: https://github.com/gruntwork-io/pre-commit
+    rev: v0.1.30
+    hooks:
+      - id: tofu-fmt
+      - id: tofu-validate
+      - id: tflint
+      - id: terragrunt-hcl-fmt
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.29.0
+    hooks:
+      - id: yamllint
+
+  # Basic universal hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        exclude: charts/flux-terragrunt-controller/templates/
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: no-commit-to-branch
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.3
+    hooks:
+      - id: actionlint

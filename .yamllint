@@ -1,0 +1,21 @@
+---
+extends:
+  default
+ignore:
+  - charts/flux-terragrunt-controller/templates/
+  - config/crd/bases/
+  - charts/flux-terragrunt-controller/crds/
+rules:
+  line-length:
+    max: 200
+    level: warning
+  document-start:
+    level: warning
+  truthy:
+    level: warning
+  brackets:
+    level: warning
+  key-duplicates:
+    level: warning
+  new-lines:
+    level: warning

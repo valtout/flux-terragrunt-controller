@@ -29,4 +29,3 @@ out/
 
 # Docker-related files should still be included as needed, but ignore caches
 **/.cache
-
