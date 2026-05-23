@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -84,6 +85,18 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
+	// Build git repo reference for the runner to fetch the artifact
+	gitRepoRef := &runner.GitRepoRef{
+		URL:      gitRepo.Status.URL,               // Artifact download URL at status level
+		Revision: gitRepo.Status.Artifact.Revision, // Commit SHA
+	}
+	if gitRepo.Spec.SecretRef != nil {
+		gitRepoRef.SecretRef = &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: gitRepo.Spec.SecretRef.Name},
+			Key:                  "credentials",
+		}
+	}
+
 	// Check for changes across all filter paths
 	gitClient := r.newGitClient(gitRepo.Spec.URL, units.Spec.Branch, units.Spec.Filters)
 
@@ -112,7 +125,7 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		log.Info("changes detected", "files", allChangedFiles, "filters", units.Spec.Filters, "lastCommit", lastKnownCommit, "currentCommit", currentCommit)
 
 		// Spawn the terragrunt runner
-		if err := r.spawnRunner(ctx, units, currentCommit); err != nil {
+		if err := r.spawnRunner(ctx, units, currentCommit, gitRepoRef); err != nil {
 			r.Recorder.Eventf(units, "Warning", "RunnerSpawnFailed", "Failed to spawn runner: %s", err.Error())
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to spawn runner: %w", err)
 		}
@@ -142,7 +155,7 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1alpha1.Units, commitSHA string) error {
+func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1alpha1.Units, commitSHA string, gitRepoRef *runner.GitRepoRef) error {
 	tgRunner := runner.NewRunner(
 		r.KubernetesClient,
 		r.Scheme,
@@ -153,7 +166,7 @@ func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1al
 
 	// Build the terragrunt command: terragrunt run --filter <path1> --filter <path2> --all plan
 	subCommand := "plan"
-	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA)
+	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA, gitRepoRef)
 	if err != nil {
 		return fmt.Errorf("failed to spawn runner job: %w", err)
 	}

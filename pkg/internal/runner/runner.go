@@ -119,11 +119,20 @@ func BuildEnvVars(units *terragruntv1alpha1.Units, commitSHA string) []corev1.En
 	return envVars
 }
 
+// GitRepoRef holds the information needed to fetch the git repository artifact.
+type GitRepoRef struct {
+	URL       string                    // Artifact URL from GitRepository.status.url
+	Revision  string                    // Commit SHA from GitRepository.status.artifact.revision
+	SecretRef *corev1.SecretKeySelector // Optional: secret for auth
+}
+
 // SpawnRunner creates a job to run terragrunt with the given parameters.
-func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Units, filters []string, subCommand string, commitSHA string) (*batchv1.Job, error) {
+// The runner container downloads the git repository artifact, extracts it to a shared
+// volume, and then runs terragrunt against that checkout — all in a single container.
+func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Units, filters []string, subCommand string, commitSHA string, gitRepo *GitRepoRef) (*batchv1.Job, error) {
 	jobName := fmt.Sprintf("tg-runner-%s-%s", units.Name, commitSHA[:8])
 
-	command := BuildCommand(filters, subCommand)
+	terragruntCmd := BuildCommand(filters, subCommand)
 
 	// Use the runner image that has terragrunt installed
 	runnerImage := r.image
@@ -135,6 +144,18 @@ func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Unit
 
 	// Build environment variables
 	envVars := BuildEnvVars(units, commitSHA)
+
+	// Single container: download + extract + run terragrunt
+	// All done in the container's local filesystem — no volumes needed
+	var containerCommand string
+	if gitRepo != nil && gitRepo.URL != "" {
+		containerCommand = fmt.Sprintf(
+			`wget -q -O - "%s" | tar -xz && rm /tmp/artifact.tar.gz 2>/dev/null; %s`,
+			gitRepo.URL, terragruntCmd,
+		)
+	} else {
+		containerCommand = terragruntCmd
+	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -164,7 +185,7 @@ func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Unit
 							Name:    "terragrunt",
 							Image:   runnerImage,
 							Command: []string{"/bin/bash", "-c"},
-							Args:    []string{command},
+							Args:    []string{containerCommand},
 							Env:     envVars,
 						},
 					},
