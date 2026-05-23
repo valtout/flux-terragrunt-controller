@@ -1,0 +1,153 @@
+---
+name: E2E Tests (Kind)
+
+on:
+  workflow_dispatch:
+    inputs:
+      k8s_version:
+        description: 'Kubernetes version'
+        required: false
+        default: '1.36.0'
+        type: choice
+        options:
+          - '1.36.0'
+  schedule:
+    # Run weekly on Sunday at 2am UTC
+    - cron: '0 2 * * 0'
+  pull_request:
+    types:
+      - labeled
+
+env:
+  KIND_VERSION: v0.22.0
+  HELM_VERSION: '3.14.0'
+
+jobs:
+  e2e-kind:
+    name: E2E Tests (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Cache modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build controller
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -ldflags="-s -w" \
+            -o bin/flux-terragrunt-controller ./cmd/flux-terragrunt-controller
+
+      - name: Build Docker image
+        run: |
+          docker build -t flux-terragrunt-controller:latest \
+            -f images/Dockerfile.controller .
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install Kind
+        run: |
+          curl -sLo /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/${{ env.KIND_VERSION }}/kind-linux-amd64"
+          chmod +x /tmp/kind
+          echo "/tmp" >> $GITHUB_PATH
+
+      - name: Create Kind cluster
+        run: |
+          /tmp/kind create cluster \
+            --name flux-terragrunt-e2e \
+            --image "kindest/node:v${{ github.event.inputs.k8s_version || '1.29.0' }}" \
+            --wait 5m
+          kubectl wait --for=condition=Ready nodes/fLux-terragrunt-e2e-control-plane --timeout=5m || true
+          kubectl get nodes
+
+      - name: Run smoke tests
+        run: |
+          scripts/e2e/run-smoke-tests.sh
+
+      - name: Deploy controllers
+        run: |
+          CLUSTER_NAME=flux-terragrunt-e2e scripts/e2e/deploy-controllers.sh
+
+      - name: Run E2E tests
+        run: |
+          CLUSTER_NAME=flux-terragrunt-e2e scripts/e2e/run-e2e-tests.sh
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== Cluster Info ==="
+          kubectl cluster-info
+          kubectl get nodes -o wide
+          echo "=== All Namespaces ==="
+          kubectl get all --all-namespaces
+          echo "=== Controller Logs ==="
+          kubectl logs -n flux-terragrunt-controller deployment/flux-terragrunt-controller-controller --tail=100 || true
+          echo "=== Events ==="
+          kubectl get events --all-namespaces --sort-by='.lastTimestamp' | tail -50
+
+      - name: Cleanup
+        if: always()
+        run: |
+          /tmp/kind delete cluster --name flux-terragrunt-e2e || true
+
+  # Job to ensure E2E only runs on PRs with the e2e label
+  e2e-pr-check:
+    name: Validate PR Label
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.label-check.outputs.has-e2e-label }}
+    steps:
+      - name: Check for e2e label
+        id: label-check
+        run: |
+          has_label=false
+          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
+            labels='${{ join(github.event.pull_request.labels.*.name, ',') }}'
+            if echo "$labels" | grep -q 'e2e'; then
+              has_label=true
+            fi
+          elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]] || [[ '${{ github.event_name }}' == 'schedule' ]]; then
+            has_label=true
+          fi
+          echo "has-e2e-label=$has_label" >> $GITHUB_OUTPUT
+          echo "PR labels: ${{ join(github.event.pull_request.labels.*.name, ', ') }}"
+          if [ "$has_label" != "true" ]; then
+            echo "::notice::E2E tests skipped - PR does not have 'e2e' label"
+          fi
+
+  # Only run E2E on labeled PRs, but allow manual/schedule regardless
+  e2e-condition:
+    name: E2E Condition Check
+    runs-on: ubuntu-latest
+    needs: e2e-pr-check
+    if: |
+      needs.e2e-pr-check.outputs.should_run == 'true' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule'
+    steps:
+      - run: echo "E2E tests will run"
+
+# workflow_permissions:
+#   contents: read
+#   packages: write

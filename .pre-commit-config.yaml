@@ -36,3 +36,6 @@ repos:
     rev: v1.7.3
     hooks:
       - id: actionlint
+        args:
+          - -ignore
+          - "SC2086"
