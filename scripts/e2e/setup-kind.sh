@@ -2,8 +2,8 @@
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-flux-terragrunt-e2e}"
-KIND_VERSION="${KIND_VERSION:-v0.22.0}"
-K8S_VERSION="${K8S_VERSION:-1.29.0}"
+KIND_VERSION="${KIND_VERSION:-v0.31.0}"
+K8S_VERSION="${K8S_VERSION:-1.36.0}"
 
 echo "=== Setting up Kind cluster: ${CLUSTER_NAME} ==="
 

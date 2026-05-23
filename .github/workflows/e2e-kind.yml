@@ -19,7 +19,7 @@ on:
       - labeled
 
 env:
-  KIND_VERSION: v0.22.0
+  KIND_VERSION: v0.31.0
   HELM_VERSION: '3.14.0'
   CLUSTER_NAME: flux-terragrunt-e2e
 
