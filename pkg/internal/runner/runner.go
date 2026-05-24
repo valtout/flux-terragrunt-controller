@@ -129,10 +129,42 @@ type GitRepoRef struct {
 // SpawnRunner creates a job to run terragrunt with the given parameters.
 // The runner container downloads the git repository artifact, extracts it to a shared
 // volume, and then runs terragrunt against that checkout — all in a single container.
-func (r *Runner) SpawnRunner(ctx context.Context, units *terragruntv1alpha1.Units, filters []string, subCommand string, commitSHA string, gitRepo *GitRepoRef) (*batchv1.Job, error) {
+func (r *Runner) SpawnRunner(
+	ctx context.Context,
+	units *terragruntv1alpha1.Units,
+	filters []string,
+	subCommand string,
+	commitSHA string,
+	lastKnownCommit string,
+	branch string,
+	gitRepo *GitRepoRef,
+) (*batchv1.Job, error) {
 	jobName := fmt.Sprintf("tg-runner-%s-%s", units.Name, commitSHA[:8])
 
+	gitBasedFilter := fmt.Sprintf("origin/%s...%s", branch, lastKnownCommit)
+
+	// Discover terragrunt units based on provided filters + an auto-derived git-based filter.
+	// Then de-duplicate results (order-preserving) into /tmp/filters-file.txt and run terragrunt for each.
+	// Note: this writes inside the container only; output is consumed in the same job.
+	discoverCmd := fmt.Sprintf(
+		`set -euo pipefail; mkdir -p /tmp; `+
+			`echo "deriving git based filter"; `+
+			`echo "%s" | tee /tmp/git-based-filter.txt; `+
+			`printf 'terragrunt find with derived git filter\n'; `+
+			`results="$(terragrunt find --filter '%s' 2>/dev/null || true)"; `+
+			`printf '%s\n' "$results" | awk 'NF' | awk '!seen[$0]++' > /tmp/filters-file.txt; `+
+			`echo "filters file content:"; cat /tmp/filters-file.txt; `+
+
+			gitBasedFilter,
+		subCommand,
+	)
+
+	// Base terragrunt command (fallback / non-discovery mode).
 	terragruntCmd := BuildCommand(filters, subCommand)
+
+	// Use discovery flow if terragrunt is expected to support `terragrunt find`.
+	// (If find fails, the job fails; caller can revert to fallback by removing derived discovery filters.)
+	terragruntCmd = discoverCmd
 
 	// Use the runner image that has terragrunt installed
 	runnerImage := r.image

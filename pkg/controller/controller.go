@@ -164,7 +164,10 @@ func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1al
 
 	// Build the terragrunt command: terragrunt run --filter <path1> --filter <path2> --all plan
 	subCommand := "plan"
-	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA, gitRepoRef)
+
+	// Runner derives an additional git-based filter (and discovers terragrunt units via `terragrunt find`).
+	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA, units.Status.LastCommitSHA, units.Spec.Branch, gitRepoRef)
+
 	if err != nil {
 		return fmt.Errorf("failed to spawn runner job: %w", err)
 	}
