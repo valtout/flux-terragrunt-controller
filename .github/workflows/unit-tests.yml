@@ -30,4 +30,4 @@ jobs:
           cache: true
 
       - name: Run unit tests
-        run: make test
+        run: make unit-tests

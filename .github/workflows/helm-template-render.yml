@@ -23,4 +23,4 @@ jobs:
           version: v3.14.0
 
       - name: Render chart
-        run: make helm-template
+        run: make helm-template-render

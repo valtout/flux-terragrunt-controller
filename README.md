@@ -7,8 +7,9 @@ A controller for Flux CD, which enables utilization of Terragrunt for GitOps.
 ### Unit Tests
 Short unit tests using `testing` package.
 ```bash
-make test
+make unit-tests
 ```
+
 
 ### Lint
 Static analysis with `go vet` and `golangci-lint`.
@@ -19,14 +20,16 @@ make lint
 ### Integration Tests
 Tests requiring Kubernetes environment via `envtest`.
 ```bash
-make integration-test
+make integration-tests
 ```
+
 
 ### Helm Chart Tests
 Helm unittest plugin and chart-testing linting.
 ```bash
-make helm-test
+make helm-chart-tests
 ```
+
 
 ### All Tests
 Run unit, lint, integration, and helm tests.

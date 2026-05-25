@@ -4,14 +4,18 @@
 # Test targets
 # =============================================================================
 
-test: ## Run unit tests
+unit-tests: ## Run unit tests
 	go test -v -short ./...
+
+
+
 
 lint: ## Run linting (go vet, golangci-lint)
 	go vet ./...
 	golangci-lint run || echo "golangci-lint not installed, skipping"
 
-integration-test: ## Run integration tests (requires envtest)
+integration-tests: ## Run integration tests (requires envtest)
+
 	@if ! command -v setup-envtest &> /dev/null; then \
 		go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest; \
 	fi
@@ -19,13 +23,15 @@ integration-test: ## Run integration tests (requires envtest)
 	export KUBEBUILDER_ASSETS=$$(cat /tmp/envtest-path.txt); \
 	go test -v -run TestIntegration ./pkg/controller/...
 
-helm-test: ## Run Helm chart tests
+helm-chart-tests: ## Run Helm chart tests
+
 	helm unittest ./charts/flux-terragrunt-controller --with-subchart_tests || true
 	ct lint --all --validate-maintainers=false || echo "chart-testing not installed"
 	find ./charts -name "*.yaml" -exec yamllint {} \; || true
 
 # Convenience target for all non-E2E tests
-test-all: test lint integration-test helm-test ## Run all tests (unit, lint, integration, helm)
+test-all: unit-tests lint integration-tests helm-chart-tests ## Run all tests (unit, lint, integration, helm)
+
 
 # =============================================================================
 # E2E Testing targets (Kind-based)
@@ -97,6 +103,7 @@ docker-inspect: ## Inspect Docker images
 	docker inspect flux-terragrunt-controller:latest || true
 	docker inspect flux-terragrunt-runner:latest || true
 
-helm-template: ## Render Helm chart to verify templates
+helm-template-render: ## Render Helm chart to verify templates
+
 	helm template flux-terragrunt-controller ./charts/flux-terragrunt-controller > /tmp/rendered.yaml
 	test -s /tmp/rendered.yaml
