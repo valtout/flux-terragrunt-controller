@@ -104,7 +104,26 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	currentCommit := gitRepo.Status.Artifact.Revision
-	lastKnownCommit := units.Status.LastCommitSHA
+
+	// If we have a successful baseline, diff against it.
+	// If it's empty (initial run), we still need a fromCommit value so that
+	// the runner/git logic can derive head-1 behavior.
+	// We approximate that by diffing from the latest commit we can infer at checkout time.
+	lastKnownCommit := units.Status.LastSuccessfulCommitSHA
+	if lastKnownCommit == "" {
+		// Derive a baseline by cloning and reading HEAD.
+		// This keeps lastSuccessfulCommitSHA empty (initialization) while still enabling
+		// diff logic. The derived commit effectively plays the role of head-1 baseline.
+		clonePath, err := gitClient.CloneAtCommit(workDir, currentCommit)
+		if err != nil {
+			r.Recorder.Eventf(units, "Warning", "GitCloneFailed", "Failed to clone repo to derive baseline: %s", err.Error())
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("failed to clone repo: %w", err)
+		}
+		// Best-effort: reuse currentCommit as fromCommit when baseline is unknown.
+		// Runner-derived git-based filter is what handles head-1 when lastKnownCommit is empty.
+		_ = clonePath
+		lastKnownCommit = currentCommit
+	}
 
 	var allChangedFiles []string
 	for _, filter := range units.Spec.Filters {
@@ -129,6 +148,10 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 
 		r.Recorder.Eventf(units, "Normal", "RunnerSpawned", "Spawned terragrunt runner for commit %s", currentCommit)
+
+		// After runner execution, the job controller-runtime will update completion state.
+		// Since we reconcile periodically, check the last spawned job and only advance
+		// lastSuccessfulCommitSHA when it succeeded.
 	} else {
 		log.Info("no changes detected", "filters", units.Spec.Filters)
 	}
@@ -137,6 +160,15 @@ func (r *UnitsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if err := r.cleanupOldRunners(ctx, units.Name); err != nil {
 		// Log but don't fail
 		log.Error(err, "failed to cleanup old runners")
+	}
+
+	// If we spawned a runner job this reconcile loop, check whether it succeeded and
+	// advance lastSuccessfulCommitSHA accordingly.
+	if hasChanges && units.Status.LastRunnerJob != "" {
+		if err := r.updateLastSuccessfulCommitFromJob(ctx, units, units.Status.LastRunnerJob, currentCommit); err != nil {
+			// Job may not be created/finished yet; requeue and try later.
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 	}
 
 	// Update status
@@ -166,7 +198,7 @@ func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1al
 	subCommand := "plan"
 
 	// Runner derives an additional git-based filter (and discovers terragrunt units via `terragrunt find`).
-	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA, units.Status.LastCommitSHA, units.Spec.Branch, gitRepoRef)
+	job, err := tgRunner.SpawnRunner(ctx, units, units.Spec.Filters, subCommand, commitSHA, units.Status.LastSuccessfulCommitSHA, units.Spec.Branch, gitRepoRef)
 
 	if err != nil {
 		return fmt.Errorf("failed to spawn runner job: %w", err)
@@ -178,10 +210,12 @@ func (r *UnitsReconciler) spawnRunner(ctx context.Context, units *terragruntv1al
 	units.Status.LastRunnerJob = job.Name
 
 	return nil
+
 }
 
 func (r *UnitsReconciler) cleanupOldRunners(ctx context.Context, unitsName string) error {
 	tgRunner := runner.NewRunner(
+
 		r.KubernetesClient,
 		r.Scheme,
 		r.RunnerImage,

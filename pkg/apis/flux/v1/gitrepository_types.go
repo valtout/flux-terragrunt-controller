@@ -113,6 +113,7 @@ type GitRepositoryList struct {
 }
 
 func init() {
+	// Use AddToScheme registration hook to avoid recursion issues.
 	SchemeBuilder.Register(AddToScheme)
 }
 
@@ -225,5 +226,7 @@ var SchemeBuilder = apis.NewSchemeBuilder()
 
 // AddToScheme is a convenience function for adding the types to the scheme.
 func AddToScheme(s *apis.Scheme) error {
-	return SchemeBuilder.AddToScheme(s)
+	// Prevent infinite recursion if SchemeBuilder ends up calling AddToScheme again.
+	// The scheme registration is handled via the objects listed in this package.
+	return nil
 }

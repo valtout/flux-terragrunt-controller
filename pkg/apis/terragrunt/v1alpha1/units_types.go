@@ -116,6 +116,11 @@ type UnitsStatus struct {
 	// +optional
 	LastCommitSHA string `json:"lastCommitSHA,omitempty"`
 
+	// LastSuccessfulCommitSHA is the SHA of the last change for which the runner job
+	// reported success and terragrunt units were applied.
+	// +optional
+	LastSuccessfulCommitSHA string `json:"lastSuccessfulCommitSHA,omitempty"`
+
 	// LastRunnerJob is the name of the last runner job spawned.
 	// +optional
 	LastRunnerJob string `json:"lastRunnerJob,omitempty"`

@@ -131,6 +131,9 @@ spec:
                 lastCommitSHA:
                   type: string
                   description: "SHA of the last detected change"
+                lastSuccessfulCommitSHA:
+                  type: string
+                  description: "SHA of the last change for which the runner job reported success"
                 lastRunnerJob:
                   type: string
                   description: "Name of the last runner job spawned"
