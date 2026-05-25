@@ -430,7 +430,8 @@ func TestReconcile_UnitNotFound(t *testing.T) {
 	}
 }
 
-func TestReconcile_FirstReconciliation(t *testing.T) {
+func TestReconcile_FirstReconciliation_DerivesBaselineFromCurrentCommit(t *testing.T) {
+
 	mockCli := newMockClient()
 
 	units := &terragruntv1alpha1.Units{
@@ -439,11 +440,14 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: terragruntv1alpha1.UnitsSpec{
-			Filters: []string{testFilters},
-			Branch:  testBranch,
+			Filters:     []string{testFilters},
+			Branch:      testBranch,
+			Parallelism: testParallelism,
 		},
 		Status: terragruntv1alpha1.UnitsStatus{
 			LastCommitSHA: "",
+			// LastSuccessfulCommitSHA intentionally empty to trigger baseline derivation.
+			LastSuccessfulCommitSHA: "",
 		},
 	}
 
@@ -469,6 +473,7 @@ func TestReconcile_FirstReconciliation(t *testing.T) {
 	mockCli.tracker.objects[client.ObjectKey{Name: "test-repo", Namespace: "default"}] = gitRepo
 
 	mockGit := &mockGitChecker{
+		cloneAtCommitResult:   func() (string, error) { return "/tmp/clone", nil },
 		getChangedFilesResult: func() ([]string, error) { return []string{"terraform/main.tf"}, nil },
 	}
 
