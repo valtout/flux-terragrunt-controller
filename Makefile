@@ -7,19 +7,22 @@
 unit-tests: ## Run unit tests
 	go test -v -short ./...
 
-
-
-
 lint: ## Run linting (go vet, golangci-lint)
 	go vet ./...
 	golangci-lint run || echo "golangci-lint not installed, skipping"
 
 integration-tests: ## Run integration tests (requires envtest)
+	ENVTEST_K8S_VERSION ?= $${ENVTEST_K8S_VERSION}
+
 
 	@if ! command -v setup-envtest &> /dev/null; then \
+
+		echo "Installing setup-envtest..."; \
 		go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest; \
 	fi
-	ENVTEST_K8S_VERSION=1.29 setup-envtest use 1.29 -p path > /tmp/envtest-path.txt
+
+	ENVTEST_K8S_VERSION=$(ENVTEST_K8S_VERSION) setup-envtest use $(ENVTEST_K8S_VERSION) -p path > /tmp/envtest-path.txt
+
 	export KUBEBUILDER_ASSETS=$$(cat /tmp/envtest-path.txt); \
 	go test -v -run TestIntegration ./pkg/controller/...
 
@@ -39,13 +42,21 @@ test-all: unit-tests lint integration-tests helm-chart-tests ## Run all tests (u
 
 E2E_SCRIPTS_DIR := scripts/e2e
 CLUSTER_NAME ?= flux-terragrunt-e2e
+
+# Kubernetes version for Kind-based E2E (single source of truth)
 K8S_VERSION ?= 1.36.0
+
+
 NAMESPACE ?= flux-system
 CONTROLLER_NAMESPACE ?= flux-terragrunt-controller
 
+
 e2e-setup: ## Create Kind cluster for E2E testing
 	@echo "Setting up Kind cluster..."
-	CLUSTER_NAME=$(CLUSTER_NAME) K8S_VERSION=$(K8S_VERSION) $(E2E_SCRIPTS_DIR)/setup-kind.sh
+CLUSTER_NAME=$(CLUSTER_NAME) K8S_VERSION=$(K8S_VERSION) $(E2E_SCRIPTS_DIR)/setup-kind.sh $(K8S_VERSION)
+
+
+
 
 e2e-smoke: ## Run smoke tests against the Kind cluster
 	@echo "Running smoke tests..."

@@ -3,7 +3,10 @@ set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-flux-terragrunt-e2e}"
 KIND_VERSION="${KIND_VERSION:-v0.31.0}"
-K8S_VERSION="${K8S_VERSION:-1.36.0}"
+
+# Kubernetes version must be passed in as $1 (no default here)
+K8S_VERSION="${1:?Kubernetes version argument is required (passed as $1 from Makefile)}"
+
 
 echo "=== Setting up Kind cluster: ${CLUSTER_NAME} ==="
 
