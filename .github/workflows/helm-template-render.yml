@@ -1,5 +1,5 @@
 ---
-name: helm-template
+name: Helm Template Rendering
 
 on:
   pull_request:
