@@ -1,4 +1,21 @@
-.PHONY: test lint helm-test integration-test e2e-setup e2e-smoke e2e-deploy e2e-test e2e-teardown e2e e2e-full
+# =============================================================================
+# Flux Terragrunt Controller Makefile
+# =============================================================================
+
+# ----- Config (single source of truth) -----
+E2E_SCRIPTS_DIR := scripts/e2e
+
+CLUSTER_NAME ?= flux-terragrunt-e2e
+K8S_VERSION ?= 1.36.0
+
+NAMESPACE ?= flux-system
+CONTROLLER_NAMESPACE ?= flux-terragrunt-controller
+
+# ----- Go test / tooling -----
+
+.PHONY: test lint helm-test integration-test e2e-setup e2e-smoke e2e-deploy e2e-test e2e-teardown e2e e2e-full \
+	kind-check docker-check show-cluster-status build docker-build docker-load-images docker-inspect \
+	helm-chart-tests helm-template-render test-all
 
 # =============================================================================
 # Test targets
@@ -12,51 +29,30 @@ lint: ## Run linting (go vet, golangci-lint)
 	golangci-lint run || echo "golangci-lint not installed, skipping"
 
 integration-tests: ## Run integration tests (requires envtest)
-	ENVTEST_K8S_VERSION ?= $${ENVTEST_K8S_VERSION}
-
-
 	@if ! command -v setup-envtest &> /dev/null; then \
-
 		echo "Installing setup-envtest..."; \
 		go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest; \
 	fi
 
-	ENVTEST_K8S_VERSION=$(ENVTEST_K8S_VERSION) setup-envtest use $(ENVTEST_K8S_VERSION) -p path > /tmp/envtest-path.txt
-
+	ENVTEST_K8S_VERSION=$$(K8S_VERSION) setup-envtest use $$(K8S_VERSION) -p path > /tmp/envtest-path.txt
 	export KUBEBUILDER_ASSETS=$$(cat /tmp/envtest-path.txt); \
 	go test -v -run TestIntegration ./pkg/controller/...
 
 helm-chart-tests: ## Run Helm chart tests
-
-	helm unittest ./charts/flux-terragrunt-controller --with-subchart_tests || true
-	ct lint --all --validate-maintainers=false || echo "chart-testing not installed"
-	find ./charts -name "*.yaml" -exec yamllint {} \; || true
+	@helm unittest ./charts/flux-terragrunt-controller --with-subchart_tests || true
+	@ct lint --all --validate-maintainers=false || echo "chart-testing not installed"
+	@find ./charts -name "*.yaml" -exec yamllint {} \; || true
 
 # Convenience target for all non-E2E tests
 test-all: unit-tests lint integration-tests helm-chart-tests ## Run all tests (unit, lint, integration, helm)
-
 
 # =============================================================================
 # E2E Testing targets (Kind-based)
 # =============================================================================
 
-E2E_SCRIPTS_DIR := scripts/e2e
-CLUSTER_NAME ?= flux-terragrunt-e2e
-
-# Kubernetes version for Kind-based E2E (single source of truth)
-K8S_VERSION ?= 1.36.0
-
-
-NAMESPACE ?= flux-system
-CONTROLLER_NAMESPACE ?= flux-terragrunt-controller
-
-
 e2e-setup: ## Create Kind cluster for E2E testing
 	@echo "Setting up Kind cluster..."
-CLUSTER_NAME=$(CLUSTER_NAME) K8S_VERSION=$(K8S_VERSION) $(E2E_SCRIPTS_DIR)/setup-kind.sh $(K8S_VERSION)
-
-
-
+	CLUSTER_NAME=$(CLUSTER_NAME) K8S_VERSION=$(K8S_VERSION) $(E2E_SCRIPTS_DIR)/setup-kind.sh $(K8S_VERSION)
 
 e2e-smoke: ## Run smoke tests against the Kind cluster
 	@echo "Running smoke tests..."
@@ -86,8 +82,6 @@ e2e-full: e2e e2e-teardown ## Full E2E test cycle including teardown
 # Utility targets
 # =============================================================================
 
-.PHONY: kind-check docker-check show-cluster-status build
-
 kind-check: ## Check if kind is installed
 	@which kind > /dev/null || echo "kind is not installed. See https://kind.sigs.k8s.io/"
 
@@ -115,6 +109,5 @@ docker-inspect: ## Inspect Docker images
 	docker inspect flux-terragrunt-runner:latest || true
 
 helm-template-render: ## Render Helm chart to verify templates
-
 	helm template flux-terragrunt-controller ./charts/flux-terragrunt-controller > /tmp/rendered.yaml
 	test -s /tmp/rendered.yaml
